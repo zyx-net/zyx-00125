@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { sampleLevels } from '../data/sampleLevels';
-import type { CellType, Color, ConflictResolution, ImportConflict } from '../types/game';
+import type { CellType, Color, ConflictResolution, ImportConflict, ImportLevelDetail } from '../types/game';
 
 const colorOptions: { value: Color; label: string; color: string }[] = [
   { value: 'red', label: '红', color: 'bg-red-500' },
@@ -93,6 +93,7 @@ export const Toolbar: React.FC = () => {
   const [height, setHeight] = useState(6);
   const [conflictResolutions, setConflictResolutions] = useState<Map<string, ConflictResolution>>(new Map());
   const [showImportHistory, setShowImportHistory] = useState(false);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const showImportPreview = pendingAllImportedLevels.length > 0;
 
@@ -493,39 +494,108 @@ export const Toolbar: React.FC = () => {
             <span className={`transition-transform ${showImportHistory ? 'rotate-180' : ''}`}>▼</span>
           </button>
           {showImportHistory && (
-            <div className="mt-2 space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
-              {importHistory.map((rec) => (
-                <div key={rec.id} className="flex items-center gap-3 text-xs bg-gray-800/40 rounded px-3 py-2">
-                  <span className="text-gray-300 font-mono truncate max-w-[160px]" title={rec.fileName}>
-                    {rec.fileName}
-                  </span>
-                  <span className="text-gray-500">
-                    {new Date(rec.timestamp).toLocaleString()}
-                  </span>
-                  <span className="flex items-center gap-2">
-                    {rec.failedCount > 0 ? (
-                      <span className="text-red-400">失败 {rec.failedCount}</span>
-                    ) : (
-                      <>
-                        {rec.newCount > 0 && <span className="text-green-400">+{rec.newCount}</span>}
-                        {rec.overwrittenCount > 0 && <span className="text-orange-400">↑{rec.overwrittenCount}</span>}
-                        {rec.duplicatedCount > 0 && <span className="text-blue-400">⊂{rec.duplicatedCount}</span>}
-                        {rec.skippedCount > 0 && <span className="text-gray-500">⊘{rec.skippedCount}</span>}
-                      </>
+            <div className="mt-2 space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+              {importHistory.map((rec) => {
+                const isExpanded = expandedHistoryId === rec.id;
+                const hasDetails = rec.levelDetails && rec.levelDetails.length > 0;
+                return (
+                  <div key={rec.id} className="bg-gray-800/40 rounded overflow-hidden">
+                    <div
+                      className={`flex items-center gap-3 text-xs px-3 py-2 cursor-pointer hover:bg-gray-800/60 transition-all ${
+                        hasDetails ? '' : 'cursor-default'
+                      }`}
+                      onClick={() => {
+                        if (hasDetails) {
+                          setExpandedHistoryId(isExpanded ? null : rec.id);
+                        }
+                      }}
+                    >
+                      {hasDetails && (
+                        <span className={`text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                          ▶
+                        </span>
+                      )}
+                      <span className="text-gray-300 font-mono truncate max-w-[160px] flex-shrink-0" title={rec.fileName}>
+                        {rec.fileName}
+                      </span>
+                      <span className="text-gray-500 flex-shrink-0">
+                        {new Date(rec.timestamp).toLocaleString()}
+                      </span>
+                      <span className="flex items-center gap-2 flex-shrink-0">
+                        {rec.failedCount > 0 ? (
+                          <span className="text-red-400">失败 {rec.failedCount}</span>
+                        ) : (
+                          <>
+                            {rec.newCount > 0 && <span className="text-green-400">+{rec.newCount}</span>}
+                            {rec.overwrittenCount > 0 && <span className="text-orange-400">↑{rec.overwrittenCount}</span>}
+                            {rec.duplicatedCount > 0 && <span className="text-blue-400">⊂{rec.duplicatedCount}</span>}
+                            {rec.skippedCount > 0 && <span className="text-gray-500">⊘{rec.skippedCount}</span>}
+                          </>
+                        )}
+                      </span>
+                      {rec.failureReasons.length > 0 && (
+                        <span className="text-red-300/70 truncate max-w-[200px]" title={rec.failureReasons.join('; ')}>
+                          {rec.failureReasons[0]}
+                        </span>
+                      )}
+                    </div>
+                    {isExpanded && hasDetails && (
+                      <div className="border-t border-gray-700/50 bg-gray-900/40 px-3 py-2 space-y-1">
+                        {rec.levelDetails.map((d: ImportLevelDetail, idx: number) => {
+                          const outcomeMap: Record<string, { label: string; cls: string }> = {
+                            new: { label: '新增', cls: 'bg-green-900/40 text-green-300 border-green-700/50' },
+                            overwritten: { label: '覆盖', cls: 'bg-orange-900/40 text-orange-300 border-orange-700/50' },
+                            duplicated: { label: '另存副本', cls: 'bg-blue-900/40 text-blue-300 border-blue-700/50' },
+                            skipped: { label: '跳过', cls: 'bg-gray-700/40 text-gray-400 border-gray-600/50' },
+                            failed: { label: '失败', cls: 'bg-red-900/40 text-red-300 border-red-700/50' },
+                          };
+                          const o = outcomeMap[d.outcome];
+                          return (
+                            <div key={idx} className="flex items-start gap-2 text-[11px] py-1">
+                              <span className={`px-1.5 py-0.5 rounded border flex-shrink-0 ${o.cls}`}>
+                                {o.label}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-gray-300 truncate" title={d.levelName}>
+                                  {d.levelName}
+                                  <span className="text-gray-500 ml-1">({d.levelId === '__file__' ? '文件级错误' : d.levelId.slice(0, 12) + '…'})</span>
+                                </div>
+                                {d.outcome === 'overwritten' && d.existingLevelName && (
+                                  <div className="text-orange-400/70 text-[10px]">
+                                    → 覆盖已有：{d.existingLevelName}
+                                    {d.conflictType && <span className="text-gray-500 ml-1">（{d.conflictType === 'both' ? 'ID+名称' : d.conflictType}冲突）</span>}
+                                  </div>
+                                )}
+                                {d.outcome === 'duplicated' && d.newLevelName && (
+                                  <div className="text-blue-400/70 text-[10px]">
+                                    → 另存为：{d.newLevelName}
+                                  </div>
+                                )}
+                                {d.outcome === 'skipped' && d.conflictType && (
+                                  <div className="text-gray-500 text-[10px]">
+                                    冲突类型：{d.conflictType === 'both' ? 'ID+名称' : d.conflictType}
+                                  </div>
+                                )}
+                                {d.outcome === 'failed' && d.failureReason && (
+                                  <div className="text-red-400/80 text-[10px]">
+                                    原因：{d.failureReason}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     )}
-                  </span>
-                  {rec.failureReasons.length > 0 && (
-                    <span className="text-red-300/70 truncate max-w-[200px]" title={rec.failureReasons.join('; ')}>
-                      {rec.failureReasons[0]}
-                    </span>
-                  )}
-                </div>
-              ))}
+                  </div>
+                );
+              })}
               <button
                 className="text-[10px] text-gray-600 hover:text-gray-400 transition-all mt-1"
                 onClick={() => {
                   if (window.confirm('确定清空导入记录吗？')) {
                     clearImportHistory();
+                    setExpandedHistoryId(null);
                   }
                 }}
               >
@@ -601,79 +671,81 @@ export const Toolbar: React.FC = () => {
       )}
 
       {showImportPreview && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-bold text-cyan-400">📥 导入预览</h3>
-              <span className="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={pendingImportFileName}>
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-stretch sm:items-center justify-center z-[100] p-0 sm:p-4">
+          <div className="bg-gray-900 border sm:border border-gray-700 sm:rounded-xl w-full sm:w-full sm:max-w-2xl shadow-2xl flex flex-col min-h-0 sm:max-h-[92vh]">
+            <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-cyan-400 flex-shrink-0">📥 导入预览</h3>
+              <span className="text-xs text-gray-500 font-mono truncate" title={pendingImportFileName}>
                 {pendingImportFileName}
               </span>
             </div>
 
-            <div className="flex gap-3 mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
-              {previewStats.newCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                  <span className="text-sm text-green-300 font-medium">将新增 {previewStats.newCount}</span>
-                </div>
-              )}
-              {previewStats.overwriteCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
-                  <span className="text-sm text-orange-300 font-medium">将覆盖 {previewStats.overwriteCount}</span>
-                </div>
-              )}
-              {previewStats.duplicateCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-                  <span className="text-sm text-blue-300 font-medium">将另存副本 {previewStats.duplicateCount}</span>
-                </div>
-              )}
-              {previewStats.skipCount > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-gray-500" />
-                  <span className="text-sm text-gray-400 font-medium">将跳过 {previewStats.skipCount}</span>
+            <div className="sticky top-[52px] sm:top-[57px] z-[5] bg-gray-900/95 backdrop-blur-sm border-b border-gray-700/50 px-4 sm:px-6 py-3 flex-shrink-0">
+              <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 bg-gray-800/60 rounded-lg border border-gray-700">
+                {previewStats.newCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-green-300 font-medium">将新增 {previewStats.newCount}</span>
+                  </div>
+                )}
+                {previewStats.overwriteCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-orange-300 font-medium">将覆盖 {previewStats.overwriteCount}</span>
+                  </div>
+                )}
+                {previewStats.duplicateCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-blue-300 font-medium">将另存副本 {previewStats.duplicateCount}</span>
+                  </div>
+                )}
+                {previewStats.skipCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-gray-400 font-medium">将跳过 {previewStats.skipCount}</span>
+                  </div>
+                )}
+              </div>
+
+              {pendingConflicts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3 pt-3 border-t border-gray-700/50 items-center">
+                  <span className="text-[11px] sm:text-xs text-gray-400 mr-1">批量:</span>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-orange-900/50 hover:bg-orange-800/60 active:bg-orange-700/60 text-orange-200 border border-orange-700/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllResolutions('overwrite')}
+                  >
+                    全部覆盖
+                  </button>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-blue-900/50 hover:bg-blue-800/60 active:bg-blue-700/60 text-blue-200 border border-blue-700/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllResolutions('duplicate')}
+                  >
+                    全部另存副本
+                  </button>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-gray-700/50 hover:bg-gray-600/60 active:bg-gray-500/60 text-gray-300 border border-gray-600/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllResolutions('cancel')}
+                  >
+                    全部跳过
+                  </button>
                 </div>
               )}
             </div>
 
-            {pendingConflicts.length > 0 && (
-              <div className="flex gap-2 mb-4 pb-4 border-b border-gray-700">
-                <span className="text-xs text-gray-400 self-center mr-1">一键:</span>
-                <button
-                  className="px-3 py-1.5 text-xs bg-orange-900/50 hover:bg-orange-800/60 text-orange-200 border border-orange-700/60 rounded transition-all"
-                  onClick={() => handleSetAllResolutions('overwrite')}
-                >
-                  全部覆盖
-                </button>
-                <button
-                  className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/60 text-blue-200 border border-blue-700/60 rounded transition-all"
-                  onClick={() => handleSetAllResolutions('duplicate')}
-                >
-                  全部另存副本
-                </button>
-                <button
-                  className="px-3 py-1.5 text-xs bg-gray-700/50 hover:bg-gray-600/60 text-gray-300 border border-gray-600/60 rounded transition-all"
-                  onClick={() => handleSetAllResolutions('cancel')}
-                >
-                  全部跳过
-                </button>
-              </div>
-            )}
-
-            <div className="overflow-y-auto flex-1 pr-2 space-y-2">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-3 sm:py-4 min-h-0 space-y-2">
               {nonConflictLevels.length > 0 && (
-                <div className="mb-2">
-                  <div className="text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wider">新增关卡</div>
+                <div className="mb-3">
+                  <div className="text-[11px] sm:text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">新增关卡</div>
                   {nonConflictLevels.map((lv) => (
-                    <div key={lv.id} className="p-3 bg-green-900/20 border border-green-800/40 rounded-lg mb-2">
+                    <div key={lv.id} className="p-2.5 sm:p-3 bg-green-900/20 border border-green-800/40 rounded-lg mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-green-400 text-sm">✅</span>
                         <span className="font-medium text-green-200 text-sm">{lv.name || '未命名关卡'}</span>
-                        <span className="text-[10px] text-green-500/70 bg-green-900/40 px-1.5 py-0.5 rounded">将新增</span>
+                        <span className="text-[10px] text-green-500/70 bg-green-900/40 px-1.5 py-0.5 rounded flex-shrink-0">将新增</span>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1 ml-6">
-                        ID: {lv.id} · 尺寸 {lv.width}×{lv.height}
+                      <div className="text-[11px] text-gray-500 mt-1 ml-6">
+                        ID: {lv.id.slice(0, 14)}… · 尺寸 {lv.width}×{lv.height}
                       </div>
                     </div>
                   ))}
@@ -682,24 +754,24 @@ export const Toolbar: React.FC = () => {
 
               {pendingConflicts.length > 0 && (
                 <div>
-                  <div className="text-xs text-amber-500/80 mb-1.5 font-medium uppercase tracking-wider">冲突关卡</div>
+                  <div className="text-[11px] sm:text-xs text-amber-500/80 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">冲突关卡</div>
                   {pendingConflicts.map((c) => {
                     const res = conflictResolutions.get(c.incomingLevel.id) || 'duplicate';
                     const conflictLabel = c.conflictType === 'both' ? 'ID 和名称' : c.conflictType === 'id' ? 'ID' : '名称';
                     return (
-                      <div key={c.incomingLevel.id} className="p-3 bg-gray-800/60 border border-gray-700 rounded-lg mb-2">
+                      <div key={c.incomingLevel.id} className="p-2.5 sm:p-3 bg-gray-800/60 border border-gray-700 rounded-lg mb-2">
                         <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <div className="font-semibold text-white flex items-center gap-2 text-sm">
-                              <span>{c.incomingLevel.name || '未命名关卡'}</span>
-                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-white flex items-center gap-2 text-sm flex-wrap">
+                              <span className="truncate">{c.incomingLevel.name || '未命名关卡'}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40 flex-shrink-0">
                                 {conflictLabel}冲突
                               </span>
                             </div>
-                            <div className="text-xs text-gray-400 mt-0.5">
+                            <div className="text-[11px] text-gray-400 mt-0.5">
                               尺寸 {c.incomingLevel.width}×{c.incomingLevel.height}
                               {c.existingLevel && (
-                                <span className="ml-2">
+                                <span className="ml-2 block sm:inline">
                                   → 现有: <span className="text-cyan-300">{c.existingLevel.name}</span>
                                   {' '}({c.existingLevel.width}×{c.existingLevel.height})
                                 </span>
@@ -707,12 +779,12 @@ export const Toolbar: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5 sm:gap-2">
                           <button
-                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
                               res === 'overwrite'
                                 ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-500/30'
-                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
                             }`}
                             onClick={() => {
                               const next = new Map(conflictResolutions);
@@ -723,10 +795,10 @@ export const Toolbar: React.FC = () => {
                             ⚠️ 覆盖
                           </button>
                           <button
-                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
                               res === 'duplicate'
                                 ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30'
-                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
                             }`}
                             onClick={() => {
                               const next = new Map(conflictResolutions);
@@ -737,10 +809,10 @@ export const Toolbar: React.FC = () => {
                             📄 另存副本
                           </button>
                           <button
-                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
                               res === 'cancel'
                                 ? 'bg-gray-600 border-gray-500 text-white'
-                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
                             }`}
                             onClick={() => {
                               const next = new Map(conflictResolutions);
@@ -758,13 +830,13 @@ export const Toolbar: React.FC = () => {
               )}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-700 flex items-center justify-between">
-              <span className="text-sm text-gray-400">
+            <div className="sticky bottom-0 z-10 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0 shadow-[0_-4px_16px_rgba(0,0,0,0.4)]">
+              <span className="text-xs sm:text-sm text-gray-400 text-center sm:text-left">
                 共 {pendingAllImportedLevels.length} 个关卡，将导入 {totalWillImport} 个
               </span>
-              <div className="flex gap-2">
+              <div className="flex gap-2 w-full sm:w-auto">
                 <button
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-all text-sm"
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-lg transition-all text-sm"
                   onClick={() => {
                     cancelPendingConflicts();
                     setConflictResolutions(new Map());
@@ -773,9 +845,9 @@ export const Toolbar: React.FC = () => {
                   取消导入
                 </button>
                 <button
-                  className={`px-4 py-2 rounded-lg transition-all font-semibold text-sm ${
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all font-semibold text-sm ${
                     totalWillImport > 0
-                      ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                      ? 'bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-400 text-white shadow-lg shadow-cyan-500/20'
                       : 'bg-gray-700 text-gray-400 cursor-not-allowed'
                   }`}
                   onClick={totalWillImport > 0 ? handleConfirmImport : undefined}

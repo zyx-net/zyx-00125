@@ -111,9 +111,25 @@ export interface ImportResult {
   duplicated: Level[];
 }
 
+export type LevelImportOutcome = 'new' | 'overwritten' | 'duplicated' | 'skipped' | 'failed';
+
+export interface ImportLevelDetail {
+  levelId: string;
+  levelName: string;
+  outcome: LevelImportOutcome;
+  conflictType?: 'id' | 'name' | 'both';
+  existingLevelId?: string;
+  existingLevelName?: string;
+  newLevelId?: string;
+  newLevelName?: string;
+  failureReason?: string;
+}
+
 export interface ImportRecord {
   id: string;
   fileName: string;
+  fileSize?: number;
+  fileHash?: string;
   timestamp: number;
   newCount: number;
   overwrittenCount: number;
@@ -121,4 +137,5 @@ export interface ImportRecord {
   skippedCount: number;
   failedCount: number;
   failureReasons: string[];
+  levelDetails: ImportLevelDetail[];
 }
