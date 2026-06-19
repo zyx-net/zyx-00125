@@ -1,0 +1,576 @@
+{
+  "name": "test-conflict-plus-new",
+  "version": "1.0",
+  "exportedAt": "2026-06-19T19:41:48.413Z",
+  "levels": [
+    {
+      "id": "sample-level-1",
+      "name": "第一关：初识钥匙",
+      "width": 8,
+      "height": 6,
+      "grid": [
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "420altsd"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "8ktpcl4y"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "tmah1u0m"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "ubtrc7ac"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "wm3iytip"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "sjf26uu0"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "2fsf2959"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "37o4fm3x"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "nfhah27y"
+            }
+          },
+          {
+            "element": {
+              "type": "start",
+              "id": "ycw4zbu5"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "nd51rizr"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "og44pmk9"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "jaghes8y"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "key",
+              "id": "la82jf1l",
+              "color": "red"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "1m541781"
+            }
+          },
+          {
+            "element": {
+              "type": "door",
+              "id": "zu0o82v2",
+              "color": "red",
+              "isOpen": false
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "yleilhxf"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "lr3su3v4"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "8gbg9mq3"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "lbvhn6qw"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "dhgt16r3"
+            }
+          },
+          {
+            "element": {
+              "type": "door",
+              "id": "x74c9yvz",
+              "color": "blue",
+              "isOpen": false
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "jjr3qbpl"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "cdj8u58v"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "key",
+              "id": "qz4ozccq",
+              "color": "blue"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "end",
+              "id": "b17rosxb"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "ac2x7a76"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "pezx7hcq"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "y1iom3ww"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "wv46jus1"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "ynw318uv"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "rvov3awy"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "f05p8sw9"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "8iybjddm"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "is0amu52"
+            }
+          }
+        ]
+      ],
+      "startPos": {
+        "x": 1,
+        "y": 1
+      },
+      "endPos": {
+        "x": 6,
+        "y": 4
+      }
+    },
+    {
+      "id": "brand-new-imported-level",
+      "name": "全新导入的测试关卡",
+      "width": 8,
+      "height": 6,
+      "grid": [
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "7max11ij"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "8r6o4ugc"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "hqxzj320"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "gg00glzv"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "fqjehzk2"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "q054exqn"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "7z9nihuu"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "etnk239s"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "huc1jm72"
+            }
+          },
+          {
+            "element": {
+              "type": "start",
+              "id": "ogo3nji6"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "wy7utg2w"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "w5vaohzl"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "xketglbr"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "key",
+              "id": "gk49lvv1",
+              "color": "red"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "n2a5hc9z"
+            }
+          },
+          {
+            "element": {
+              "type": "door",
+              "id": "5dk41i4v",
+              "color": "red",
+              "isOpen": false
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "dskgdzjz"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "oz9am8ph"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "6xqzcoaz"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "dou310wd"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "8hkirrq8"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "6exlah6o"
+            }
+          },
+          {
+            "element": {
+              "type": "door",
+              "id": "b06fg3he",
+              "color": "blue",
+              "isOpen": false
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "x50gqt6i"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "b9d0smce"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "key",
+              "id": "v3wtyqba",
+              "color": "blue"
+            }
+          },
+          {
+            "element": null
+          },
+          {
+            "element": {
+              "type": "end",
+              "id": "2dvawoqd"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "6meo4nj8"
+            }
+          }
+        ],
+        [
+          {
+            "element": {
+              "type": "wall",
+              "id": "mccy4qvw"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "l4jbuqjk"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "lzrgmskv"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "rqa7gdqd"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "y2ne3j0a"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "j0earhem"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "sfhn5mqt"
+            }
+          },
+          {
+            "element": {
+              "type": "wall",
+              "id": "34vrxnjj"
+            }
+          }
+        ]
+      ],
+      "startPos": {
+        "x": 1,
+        "y": 1
+      },
+      "endPos": {
+        "x": 6,
+        "y": 4
+      }
+    }
+  ]
+}
