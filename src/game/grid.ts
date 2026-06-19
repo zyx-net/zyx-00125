@@ -1,4 +1,4 @@
-import type { Cell, Position, Level, GameElement, Color } from '../types/game';
+import type { Cell, Position, Level, GameElement, Color, GameState } from '../types/game';
 
 export function createEmptyGrid(width: number, height: number): Cell[][] {
   const grid: Cell[][] = [];
@@ -83,4 +83,21 @@ export function isDoorOpen(grid: Cell[][], pos: Position): boolean {
   const cell = getCell(grid, pos);
   if (!cell?.element || cell.element.type !== 'door') return false;
   return cell.element.isOpen ?? false;
+}
+
+export function cloneGameState(state: GameState): GameState {
+  return {
+    ...state,
+    level: {
+      ...state.level,
+      grid: cloneGrid(state.level.grid),
+      startPos: { ...state.level.startPos },
+      endPos: { ...state.level.endPos },
+    },
+    player: {
+      ...state.player,
+      position: { ...state.player.position },
+      inventory: [...state.player.inventory],
+    },
+  };
 }

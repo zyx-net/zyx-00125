@@ -3,7 +3,7 @@ import { createInitialGameState, movePlayer, getAllDoors, getAllMechanisms } fro
 import { validateLevel, isEndReachable } from '../game/rules';
 import { createHistory, addAction, canUndo, canRedo, undo, redo, resetHistory } from '../game/history';
 import { createEmptyGrid, generateId, setCell } from '../game/grid';
-import type { Level, GameState } from '../types/game';
+import type { Level, GameState, Direction } from '../types/game';
 
 function makeTestLevel(): Level {
   const width = 6;
@@ -338,6 +338,70 @@ describe('错误边界: 非法操作不污染行动栈', () => {
   });
 });
 
+describe('历史快照独立性: 后续操作不污染之前的快照', () => {
+  it('每步保存的 stateSnapshot 应该独立，不被后续操作修改', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    let history = resetHistory(createHistory(), state);
+
+    const snap0 = history.actions[0].stateSnapshot;
+    expect(snap0.level.grid[1][2].element?.type).toBe('key');
+    expect(snap0.level.grid[1][3].element?.isOpen).toBe(false);
+    expect(snap0.player.inventory).toEqual([]);
+
+    const r1 = movePlayer(state, 'right');
+    state = r1.newState!;
+    history = addAction(history, r1.actionType!, state.player.position, r1.message, state, 'right');
+
+    const snap1 = history.actions[1].stateSnapshot;
+    expect(snap1.level.grid[1][2].element).toBeNull();
+    expect(snap1.player.inventory).toEqual(['red']);
+
+    expect(snap0.level.grid[1][2].element?.type).toBe('key');
+    expect(snap0.player.inventory).toEqual([]);
+
+    const r2 = movePlayer(state, 'right');
+    state = r2.newState!;
+    history = addAction(history, r2.actionType!, state.player.position, r2.message, state, 'right');
+
+    const snap2 = history.actions[2].stateSnapshot;
+    expect(snap2.level.grid[1][3].element?.isOpen).toBe(true);
+    expect(snap2.player.inventory).toEqual([]);
+
+    expect(snap0.level.grid[1][2].element?.type).toBe('key');
+    expect(snap0.player.inventory).toEqual([]);
+    expect(snap1.level.grid[1][2].element).toBeNull();
+    expect(snap1.level.grid[1][3].element?.isOpen).toBe(false);
+    expect(snap1.player.inventory).toEqual(['red']);
+  });
+
+  it('完整浏览器流程: 多步操作后所有历史快照状态独立正确', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    let history = resetHistory(createHistory(), state);
+
+    const expectedSnaps = [
+      { desc: '初始状态', keyCell: 'key', doorOpen: false, inventory: [] as string[] },
+      { desc: '向右', keyCell: null, doorOpen: false, inventory: ['red'] },
+      { desc: '向右', keyCell: null, doorOpen: true, inventory: [] as string[] },
+    ];
+
+    for (let i = 0; i < 2; i++) {
+      const r = movePlayer(state, 'right');
+      state = r.newState!;
+      history = addAction(history, r.actionType!, state.player.position, r.message, state, 'right');
+    }
+
+    for (let i = 0; i < history.actions.length; i++) {
+      const snap = history.actions[i].stateSnapshot;
+      const expected = expectedSnaps[i];
+      expect(snap.level.grid[1][2].element?.type ?? null).toBe(expected.keyCell);
+      expect(snap.level.grid[1][3].element?.isOpen).toBe(expected.doorOpen);
+      expect(snap.player.inventory).toEqual(expected.inventory);
+    }
+  });
+});
+
 describe('关卡验证', () => {
   it('缺少起点不可保存', () => {
     const grid = createEmptyGrid(4, 4);
@@ -381,5 +445,261 @@ describe('关卡验证', () => {
       startPos: { x: 1, y: 1 }, endPos: { x: 2, y: 2 },
     };
     expect(isEndReachable(level)).toBe(false);
+  });
+});
+
+describe('导出内容一致性: 单关卡导出与当前局面一致', () => {
+  it('拾钥匙后导出的 level.grid 中钥匙格 element 为 null', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+
+    const exported = JSON.parse(JSON.stringify(state.level));
+    expect(exported.grid[1][2].element).toBeNull();
+    expect(exported.grid[1][3].element?.type).toBe('door');
+    expect(exported.grid[1][3].element?.isOpen).toBe(false);
+    expect(exported.grid[1][1].element?.type).toBe('start');
+  });
+
+  it('开门后导出的 level.grid 中门 isOpen=true，钥匙格仍为空', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+    state = movePlayer(state, 'right').newState!;
+
+    const exported = JSON.parse(JSON.stringify(state.level));
+    expect(exported.grid[1][2].element).toBeNull();
+    expect(exported.grid[1][3].element?.type).toBe('door');
+    expect(exported.grid[1][3].element?.isOpen).toBe(true);
+    expect(exported.grid[1][3].element?.color).toBe('red');
+  });
+
+  it('撤销后导出内容恢复到钥匙未拾取状态', () => {
+    const level = makeTestLevel();
+    const state = createInitialGameState(level);
+    let history = resetHistory(createHistory(), state);
+
+    const move1 = movePlayer(state, 'right');
+    history = addAction(history, move1.actionType!, move1.newState!.player.position, move1.message, move1.newState!, 'right');
+
+    const undoResult = undo(history);
+    expect(undoResult).not.toBeNull();
+
+    const exportedAfterUndo = JSON.parse(JSON.stringify(undoResult!.state.level));
+    expect(exportedAfterUndo.grid[1][2].element?.type).toBe('key');
+    expect(exportedAfterUndo.grid[1][2].element?.color).toBe('red');
+
+    const redoResult = redo(undoResult!.history);
+    expect(redoResult).not.toBeNull();
+
+    const exportedAfterRedo = JSON.parse(JSON.stringify(redoResult!.state.level));
+    expect(exportedAfterRedo.grid[1][2].element).toBeNull();
+  });
+
+  it('存档序列化后再加载，level 与导出内容逐字段一致', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+    state = movePlayer(state, 'right').newState!;
+
+    const serialized = JSON.stringify(state);
+    const restored: GameState = JSON.parse(serialized);
+
+    const exportedFromOriginal = JSON.parse(JSON.stringify(state.level));
+    const exportedFromRestored = JSON.parse(JSON.stringify(restored.level));
+
+    expect(exportedFromRestored.grid[1][2].element).toBeNull();
+    expect(exportedFromRestored.grid[1][3].element?.isOpen).toBe(true);
+    expect(restored.player.position).toEqual(state.player.position);
+    expect(exportedFromRestored.width).toBe(exportedFromOriginal.width);
+    expect(exportedFromRestored.height).toBe(exportedFromOriginal.height);
+    expect(exportedFromRestored.id).toBe(exportedFromOriginal.id);
+  });
+
+  it('导出的 level 可被 JSON 序列化/反序列化且结构完整', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+
+    const json = JSON.stringify(state.level);
+    const parsed = JSON.parse(json);
+
+    expect(parsed).toHaveProperty('id');
+    expect(parsed).toHaveProperty('name');
+    expect(parsed).toHaveProperty('width');
+    expect(parsed).toHaveProperty('height');
+    expect(parsed).toHaveProperty('grid');
+    expect(parsed).toHaveProperty('startPos');
+    expect(parsed).toHaveProperty('endPos');
+    expect(Array.isArray(parsed.grid)).toBe(true);
+    expect(parsed.grid.length).toBe(parsed.height);
+    expect(parsed.grid[0].length).toBe(parsed.width);
+  });
+});
+
+describe('导出内容一致性: 关卡包导出包含当前实时状态', () => {
+  it('关卡包构造时，游玩模式下当前 level 会替换同 id 的蓝图', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+    state = movePlayer(state, 'right').newState!;
+
+    const blueprint = makeTestLevel();
+    const allLevels = [blueprint];
+
+    const mode = 'play';
+    if (mode === 'play' && state.level?.id) {
+      const idx = allLevels.findIndex(l => l.id === state.level.id);
+      if (idx >= 0) {
+        allLevels[idx] = state.level;
+      }
+    }
+
+    const packLevel = allLevels[0];
+    expect(packLevel.grid[1][2].element).toBeNull();
+    expect(packLevel.grid[1][3].element?.isOpen).toBe(true);
+
+    const originalBlueprint = makeTestLevel();
+    expect(originalBlueprint.grid[1][2].element?.type).toBe('key');
+    expect(originalBlueprint.grid[1][3].element?.isOpen).toBe(false);
+  });
+
+  it('编辑模式下关卡包导出蓝图不变', () => {
+    const blueprint = makeTestLevel();
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+
+    const allLevels = [blueprint];
+    const mode = 'edit' as string;
+
+    if (mode === 'play' && state.level?.id) {
+      const idx = allLevels.findIndex(l => l.id === state.level.id);
+      if (idx >= 0) {
+        allLevels[idx] = state.level;
+      }
+    }
+
+    expect(allLevels[0].grid[1][2].element?.type).toBe('key');
+    expect(allLevels[0].grid[1][3].element?.isOpen).toBe(false);
+  });
+
+  it('导出的关卡包 JSON 可被导入并验证通过', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+
+    const pack = {
+      name: 'test-pack',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      levels: [state.level],
+    };
+
+    const json = JSON.stringify(pack);
+    const parsed = JSON.parse(json);
+
+    expect(Array.isArray(parsed.levels)).toBe(true);
+    expect(parsed.levels.length).toBe(1);
+    expect(parsed.levels[0].grid[1][2].element).toBeNull();
+    expect(validateLevel(parsed.levels[0]).valid).toBe(true);
+  });
+
+  it('关卡包导入后重新导出，内容与原导出一致', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+    state = movePlayer(state, 'right').newState!;
+
+    const originalPack = {
+      name: 'pack1',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      levels: [state.level],
+    };
+
+    const json1 = JSON.stringify(originalPack);
+    const parsed = JSON.parse(json1);
+
+    const reExportedPack = {
+      name: 'pack2',
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      levels: parsed.levels,
+    };
+
+    const json2 = JSON.stringify(reExportedPack);
+    const levels1 = JSON.parse(json1).levels;
+    const levels2 = JSON.parse(json2).levels;
+
+    expect(levels1[0].grid[1][2].element).toBeNull();
+    expect(levels2[0].grid[1][2].element).toBeNull();
+    expect(levels1[0].grid[1][3].element?.isOpen).toBe(true);
+    expect(levels2[0].grid[1][3].element?.isOpen).toBe(true);
+    expect(state.player.position).toEqual({ x: 3, y: 1 });
+  });
+});
+
+describe('状态同步: 保存恢复后导出内容一致', () => {
+  it('saveCurrentState 保存的数据 loadCurrentState 后，level 与导出一致', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    state = movePlayer(state, 'right').newState!;
+    state = movePlayer(state, 'right').newState!;
+
+    const history = resetHistory(createHistory(), state);
+    const saveData = {
+      gameState: state,
+      actionHistory: history.actions,
+      historyIndex: history.currentIndex,
+      timestamp: Date.now(),
+    };
+
+    const serialized = JSON.stringify(saveData);
+    const restored = JSON.parse(serialized);
+
+    expect(restored.gameState.level.grid[1][2].element).toBeNull();
+    expect(restored.gameState.level.grid[1][3].element?.isOpen).toBe(true);
+    expect(restored.gameState.player.inventory).not.toContain('red');
+    expect(restored.gameState.turn).toBe(2);
+
+    const exportedLevel = JSON.parse(JSON.stringify(state.level));
+    expect(restored.gameState.level.grid[1][2].element).toEqual(exportedLevel.grid[1][2].element);
+    expect(restored.gameState.level.grid[1][3].element?.isOpen).toEqual(exportedLevel.grid[1][3].element?.isOpen);
+  });
+
+  it('完整流程: 移动→拾钥匙→开门→存档→读档→导出，结果一致', () => {
+    const level = makeTestLevel();
+    let state = createInitialGameState(level);
+    let history = resetHistory(createHistory(), state);
+
+    const moves: Direction[] = ['right', 'right', 'down', 'down'];
+    for (const dir of moves) {
+      const r = movePlayer(state, dir);
+      if (r.valid && r.newState) {
+        history = addAction(history, r.actionType!, r.newState.player.position, r.message, r.newState, dir);
+        state = r.newState;
+      }
+    }
+
+    expect(state.level.grid[1][2].element).toBeNull();
+    expect(state.level.grid[1][3].element?.isOpen).toBe(true);
+    expect(state.player.position).toEqual({ x: 3, y: 3 });
+
+    const exported1 = JSON.parse(JSON.stringify(state.level));
+
+    const saveData = JSON.parse(JSON.stringify({ gameState: state, history }));
+    const restoredState = saveData.gameState;
+    const exported2 = JSON.parse(JSON.stringify(restoredState.level));
+
+    expect(exported2.grid[1][2].element).toBeNull();
+    expect(exported2.grid[1][3].element?.isOpen).toBe(true);
+    expect(exported2.grid[3][3].element?.type).toBe('mechanism');
+    expect(exported2.grid[3][3].element?.isActive).toBe(true);
+    expect(exported2.grid[3][4].element?.isOpen).toBe(true);
+
+    expect(exported1.grid[1][2].element).toEqual(exported2.grid[1][2].element);
+    expect(exported1.grid[1][3].element?.isOpen).toEqual(exported2.grid[1][3].element?.isOpen);
+    expect(exported1.grid[3][3].element?.isActive).toEqual(exported2.grid[3][3].element?.isActive);
   });
 });

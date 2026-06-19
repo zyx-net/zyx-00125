@@ -1,5 +1,5 @@
 import type { Action, GameState } from '../types/game';
-import { generateId } from './grid';
+import { generateId, cloneGameState } from './grid';
 
 export interface HistoryState {
   actions: Action[];
@@ -28,7 +28,7 @@ export function addAction(
     position,
     description,
     timestamp: Date.now(),
-    stateSnapshot,
+    stateSnapshot: cloneGameState(stateSnapshot),
   };
 
   const truncatedActions = history.actions.slice(0, history.currentIndex + 1);
@@ -52,7 +52,7 @@ export function undo(history: HistoryState): { history: HistoryState; state: Gam
   if (!canUndo(history)) return null;
   
   const newIndex = history.currentIndex - 1;
-  const state = history.actions[newIndex].stateSnapshot;
+  const state = cloneGameState(history.actions[newIndex].stateSnapshot);
   
   return {
     history: {
@@ -67,7 +67,7 @@ export function redo(history: HistoryState): { history: HistoryState; state: Gam
   if (!canRedo(history)) return null;
   
   const newIndex = history.currentIndex + 1;
-  const state = history.actions[newIndex].stateSnapshot;
+  const state = cloneGameState(history.actions[newIndex].stateSnapshot);
   
   return {
     history: {
@@ -82,7 +82,7 @@ export function getCurrentState(history: HistoryState): GameState | null {
   if (history.currentIndex < 0 || history.currentIndex >= history.actions.length) {
     return null;
   }
-  return history.actions[history.currentIndex].stateSnapshot;
+  return cloneGameState(history.actions[history.currentIndex].stateSnapshot);
 }
 
 export function resetHistory(history: HistoryState, initialState: GameState): HistoryState {
@@ -93,7 +93,7 @@ export function resetHistory(history: HistoryState, initialState: GameState): Hi
       position: initialState.player.position,
       description: '初始状态',
       timestamp: Date.now(),
-      stateSnapshot: initialState,
+      stateSnapshot: cloneGameState(initialState),
     }],
     currentIndex: 0,
   };

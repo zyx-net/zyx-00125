@@ -7,7 +7,8 @@ export function exportLevel(level: Level): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${level.name || 'level'}.json`;
+  const safeName = (level.name || 'level').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+  a.download = `${safeName}-${level.id || 'level'}-${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

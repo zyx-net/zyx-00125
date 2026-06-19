@@ -413,10 +413,20 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   exportAllLevels: () => {
-    const { customLevels } = get();
+    const { customLevels, gameState, mode } = get();
     const allLevels = [...sampleLevels, ...customLevels];
-    exportLevelPack(allLevels, 'puzzle-levels');
-    get().showMessage(`✅ 已导出 ${allLevels.length} 个关卡`, 'success');
+
+    if (mode === 'play' && gameState.level?.id) {
+      const idx = allLevels.findIndex(l => l.id === gameState.level.id);
+      if (idx >= 0) {
+        allLevels[idx] = gameState.level;
+      } else {
+        allLevels.push(gameState.level);
+      }
+    }
+
+    exportLevelPack(allLevels, `puzzle-levels-${Date.now()}`);
+    get().showMessage(`✅ 已导出 ${allLevels.length} 个关卡（含当前局面）`, 'success');
   },
 
   importLevels: async () => {
