@@ -22,6 +22,7 @@ import {
   clearAllStorage,
 } from '../utils/storage';
 import { validateLevel } from '../game/rules';
+import { useGameStore } from '../store/useGameStore';
 
 class LocalStorageMock {
   private store: Record<string, string> = {};
@@ -557,5 +558,149 @@ describe('恢复流程: 草稿恢复后可继续编辑、撤销重做、导出',
 
     clearLastEditingLevelId();
     expect(loadLastEditingLevelId()).toBeNull();
+  });
+});
+
+describe('导入冲突回归: 非冲突关卡不丢失（store 级别集成测试）', () => {
+  beforeEach(() => {
+    ls.clear();
+    useGameStore.setState({
+      customLevels: [
+        makeLevel({ id: 'exist-1', name: '已有一' }),
+      ],
+      pendingConflicts: [],
+      pendingAllImportedLevels: [],
+      allDraftIds: [],
+    });
+  });
+
+  it('1 个 ID 冲突 + 1 个全新关卡，选择覆盖 → 新关卡完整加入，冲突项被覆盖', () => {
+    const newLv = makeLevel({ id: 'brand-new', name: '全新关卡' });
+    setCell(newLv.grid, { x: 5, y: 3 }, { type: 'key', color: 'green', id: generateId() });
+    const conflictLv = makeLevel({ id: 'exist-1', name: '已有一' });
+    setCell(conflictLv.grid, { x: 2, y: 2 }, { type: 'wall', id: generateId() });
+
+    useGameStore.setState({
+      pendingConflicts: [
+        { incomingLevel: conflictLv, existingLevel: makeLevel({ id: 'exist-1', name: '已有一' }), conflictType: 'both' },
+      ],
+      pendingAllImportedLevels: [conflictLv, newLv],
+    });
+
+    const resolutions = new Map<string, ConflictResolution>();
+    resolutions.set('exist-1', 'overwrite');
+
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(2);
+    expect(result.overwritten.length).toBe(1);
+    expect(result.skipped.length).toBe(0);
+    expect(result.duplicated.length).toBe(0);
+
+    const custom = useGameStore.getState().customLevels;
+    expect(custom.length).toBe(2);
+
+    const overwritten = custom.find(l => l.id === 'exist-1')!;
+    expect(overwritten.grid[2][2].element?.type).toBe('wall');
+
+    const brandNew = custom.find(l => l.id === 'brand-new')!;
+    expect(brandNew).toBeTruthy();
+    expect(brandNew.name).toBe('全新关卡');
+    expect(brandNew.grid[3][5].element?.type).toBe('key');
+    expect(brandNew.grid[3][5].element?.color).toBe('green');
+
+    expect(useGameStore.getState().pendingConflicts.length).toBe(0);
+    expect(useGameStore.getState().pendingAllImportedLevels.length).toBe(0);
+  });
+
+  it('1 个冲突 + 2 个全新关卡，冲突选另存副本 → 全部 3 个新关卡都加入', () => {
+    const new1 = makeLevel({ id: 'new-1', name: '新关卡1' });
+    const new2 = makeLevel({ id: 'new-2', name: '新关卡2' });
+    const conflictLv = makeLevel({ id: 'exist-1', name: '已有一' });
+    setCell(conflictLv.grid, { x: 3, y: 3 }, { type: 'door', color: 'blue', isOpen: false, id: generateId() });
+
+    useGameStore.setState({
+      pendingConflicts: [
+        { incomingLevel: conflictLv, existingLevel: makeLevel({ id: 'exist-1', name: '已有一' }), conflictType: 'both' },
+      ],
+      pendingAllImportedLevels: [conflictLv, new1, new2],
+    });
+
+    const resolutions = new Map<string, ConflictResolution>();
+    resolutions.set('exist-1', 'duplicate');
+
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(3);
+    expect(result.duplicated.length).toBe(1);
+    expect(result.overwritten.length).toBe(0);
+    expect(result.skipped.length).toBe(0);
+
+    const custom = useGameStore.getState().customLevels;
+    expect(custom.length).toBe(4);
+
+    expect(custom.filter(l => l.name.startsWith('已有一')).length).toBe(2);
+    expect(custom.find(l => l.id === 'new-1')).toBeTruthy();
+    expect(custom.find(l => l.id === 'new-2')).toBeTruthy();
+
+    const dup = custom.find(l => l.name === '已有一 (副本)')!;
+    expect(dup).toBeTruthy();
+    expect(dup.grid[3][3].element?.type).toBe('door');
+    expect(dup.grid[3][3].element?.color).toBe('blue');
+  });
+
+  it('单项取消冲突项 → 只跳过冲突，非冲突关卡仍被导入', () => {
+    const newLv = makeLevel({ id: 'should-import', name: '新关卡' });
+    const conflictLv = makeLevel({ id: 'exist-1', name: '已有一' });
+    setCell(conflictLv.grid, { x: 2, y: 2 }, { type: 'wall', id: generateId() });
+
+    useGameStore.setState({
+      pendingConflicts: [
+        { incomingLevel: conflictLv, existingLevel: makeLevel({ id: 'exist-1', name: '已有一' }), conflictType: 'both' },
+      ],
+      pendingAllImportedLevels: [conflictLv, newLv],
+    });
+
+    const resolutions = new Map<string, ConflictResolution>();
+    resolutions.set('exist-1', 'cancel');
+
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(1);
+    expect(result.skipped.length).toBe(1);
+    expect(result.overwritten.length).toBe(0);
+    expect(result.duplicated.length).toBe(0);
+
+    const custom = useGameStore.getState().customLevels;
+    expect(custom.length).toBe(2);
+    expect(custom.find(l => l.id === 'should-import')).toBeTruthy();
+    expect(custom.find(l => l.id === 'exist-1')!.grid[2][2].element).toBeNull();
+
+    expect(useGameStore.getState().pendingConflicts.length).toBe(0);
+    expect(useGameStore.getState().pendingAllImportedLevels.length).toBe(0);
+  });
+
+  it('全部取消（cancelPendingConflicts）→ 原数据一丝不改，pending 全部清空', () => {
+    const origSnapshot = JSON.stringify(useGameStore.getState().customLevels);
+
+    const newLv = makeLevel({ id: 'should-not-import', name: '不应导入' });
+    const conflictLv = makeLevel({ id: 'exist-1', name: '已有一' });
+
+    useGameStore.setState({
+      pendingConflicts: [
+        { incomingLevel: conflictLv, existingLevel: makeLevel({ id: 'exist-1', name: '已有一' }), conflictType: 'both' },
+      ],
+      pendingAllImportedLevels: [conflictLv, newLv],
+    });
+
+    useGameStore.getState().cancelPendingConflicts();
+
+    expect(useGameStore.getState().pendingConflicts.length).toBe(0);
+    expect(useGameStore.getState().pendingAllImportedLevels.length).toBe(0);
+
+    const custom = useGameStore.getState().customLevels;
+    expect(custom.length).toBe(1);
+    expect(custom[0].id).toBe('exist-1');
+    expect(JSON.stringify(custom)).toBe(origSnapshot);
   });
 });

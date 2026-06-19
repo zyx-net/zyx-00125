@@ -84,6 +84,7 @@ interface GameStore {
   hasUnsavedDraft: boolean;
   draftUpdatedAt: number | null;
   pendingConflicts: ImportConflict[];
+  pendingAllImportedLevels: Level[];
   isDraftRestored: boolean;
   allDraftIds: string[];
 
@@ -187,6 +188,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     hasUnsavedDraft: false,
     draftUpdatedAt: null,
     pendingConflicts: [],
+    pendingAllImportedLevels: [],
     isDraftRestored: false,
     allDraftIds: [],
 
@@ -728,7 +730,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             const { customLevels } = get();
             const conflicts = detectConflicts(levels, customLevels);
             if (conflicts.length > 0) {
-              set({ pendingConflicts: conflicts });
+              set({ pendingConflicts: conflicts, pendingAllImportedLevels: levels });
               resolve({
                 success: true,
                 message: `⚠️ 检测到 ${conflicts.length} 个冲突，请选择处理方式`,
@@ -749,21 +751,26 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     resolveImportConflicts: (resolutions: Map<string, ConflictResolution>): ImportResult => {
-      const { pendingConflicts, customLevels } = get();
+      const { pendingAllImportedLevels, pendingConflicts, customLevels } = get();
       const conflictMap = new Map(pendingConflicts.map(c => [c.incomingLevel.id, c]));
-      const nonConflictIncoming = pendingConflicts.length === 0 ? [] : [];
       let allCustom = [...customLevels];
       const result: ImportResult = {
-        imported: [...nonConflictIncoming],
+        imported: [],
         skipped: [],
         overwritten: [],
         duplicated: [],
       };
 
-      for (const [levelId, resolution] of resolutions.entries()) {
-        const conflict = conflictMap.get(levelId);
-        if (!conflict) continue;
-        const { incomingLevel, existingLevel } = conflict;
+      for (const incomingLevel of pendingAllImportedLevels) {
+        const conflict = conflictMap.get(incomingLevel.id);
+        if (!conflict) {
+          const newLevel = { ...incomingLevel, id: incomingLevel.id || generateId() };
+          allCustom.push(newLevel);
+          result.imported.push(newLevel);
+          continue;
+        }
+        const { existingLevel } = conflict;
+        const resolution = resolutions.get(incomingLevel.id);
         if (resolution === 'overwrite' && existingLevel) {
           const idx = allCustom.findIndex(l => l.id === existingLevel.id);
           if (idx >= 0) {
@@ -799,13 +806,14 @@ export const useGameStore = create<GameStore>((set, get) => {
       set({
         customLevels: allCustom,
         pendingConflicts: [],
+        pendingAllImportedLevels: [],
         allDraftIds,
       });
       return result;
     },
 
     cancelPendingConflicts: () => {
-      set({ pendingConflicts: [] });
+      set({ pendingConflicts: [], pendingAllImportedLevels: [] });
     },
 
     exportCurrentSave: () => {
