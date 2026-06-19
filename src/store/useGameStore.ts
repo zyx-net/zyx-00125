@@ -14,6 +14,7 @@ import type {
   ConflictResolution,
   ImportResult,
   EditorSnapshot,
+  ImportRecord,
 } from '../types/game';
 import {
   createInitialGameState,
@@ -59,6 +60,8 @@ import {
   hasDraft,
   loadAllDrafts,
   isLevelDirty,
+  saveImportHistory,
+  loadImportHistory,
 } from '../utils/storage';
 import {
   exportLevel,
@@ -85,8 +88,10 @@ interface GameStore {
   draftUpdatedAt: number | null;
   pendingConflicts: ImportConflict[];
   pendingAllImportedLevels: Level[];
+  pendingImportFileName: string;
   isDraftRestored: boolean;
   allDraftIds: string[];
+  importHistory: ImportRecord[];
 
   setMode: (mode: Mode) => void;
   setEditorTool: (tool: CellType | 'eraser') => void;
@@ -111,6 +116,8 @@ interface GameStore {
     resolutions: Map<string, ConflictResolution>
   ) => ImportResult;
   cancelPendingConflicts: () => void;
+  addImportRecord: (record: ImportRecord) => void;
+  clearImportHistory: () => void;
   exportCurrentSave: () => void;
   getBestMoves: (levelId: string) => number | null;
   showMessage: (message: string, type?: 'success' | 'error' | 'info') => void;
@@ -189,8 +196,10 @@ export const useGameStore = create<GameStore>((set, get) => {
     draftUpdatedAt: null,
     pendingConflicts: [],
     pendingAllImportedLevels: [],
+    pendingImportFileName: '',
     isDraftRestored: false,
     allDraftIds: [],
+    importHistory: loadImportHistory(),
 
     setMode: (mode: Mode) => {
       const prev = get().mode;
@@ -729,21 +738,34 @@ export const useGameStore = create<GameStore>((set, get) => {
             const levels = await importLevelPack(file);
             const { customLevels } = get();
             const conflicts = detectConflicts(levels, customLevels);
-            if (conflicts.length > 0) {
-              set({ pendingConflicts: conflicts, pendingAllImportedLevels: levels });
-              resolve({
-                success: true,
-                message: `⚠️ 检测到 ${conflicts.length} 个冲突，请选择处理方式`,
-                conflicts,
-              });
-            } else {
-              const newLevels = [...customLevels, ...levels.map(l => ({ ...l, id: l.id || generateId() }))];
-              saveCustomLevels(newLevels);
-              set({ customLevels: newLevels });
-              resolve({ success: true, message: `✅ 成功导入 ${levels.length} 个关卡` });
-            }
+            set({
+              pendingConflicts: conflicts,
+              pendingAllImportedLevels: levels,
+              pendingImportFileName: file.name,
+            });
+            resolve({
+              success: true,
+              message: conflicts.length > 0
+                ? `⚠️ 检测到 ${conflicts.length} 个冲突，请选择处理方式`
+                : `📋 即将导入 ${levels.length} 个关卡，请确认`,
+              conflicts,
+            });
           } catch (error: unknown) {
             const message = error instanceof Error ? error.message : '导入失败';
+            const record: ImportRecord = {
+              id: generateId(),
+              fileName: file.name,
+              timestamp: Date.now(),
+              newCount: 0,
+              overwrittenCount: 0,
+              duplicatedCount: 0,
+              skippedCount: 0,
+              failedCount: 1,
+              failureReasons: [message],
+            };
+            const history = [record, ...get().importHistory].slice(0, 50);
+            saveImportHistory(history);
+            set({ importHistory: history });
             resolve({ success: false, message });
           }
         });
@@ -751,7 +773,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     resolveImportConflicts: (resolutions: Map<string, ConflictResolution>): ImportResult => {
-      const { pendingAllImportedLevels, pendingConflicts, customLevels } = get();
+      const { pendingAllImportedLevels, pendingConflicts, customLevels, pendingImportFileName } = get();
       const conflictMap = new Map(pendingConflicts.map(c => [c.incomingLevel.id, c]));
       let allCustom = [...customLevels];
       const result: ImportResult = {
@@ -803,17 +825,46 @@ export const useGameStore = create<GameStore>((set, get) => {
 
       saveCustomLevels(allCustom);
       const allDraftIds = get().allDraftIds.filter(id => allCustom.some(l => l.id === id) || hasDraft(id));
+
+      const newCount = result.imported.length - result.overwritten.length - result.duplicated.length;
+      const record: ImportRecord = {
+        id: generateId(),
+        fileName: pendingImportFileName,
+        timestamp: Date.now(),
+        newCount: Math.max(0, newCount),
+        overwrittenCount: result.overwritten.length,
+        duplicatedCount: result.duplicated.length,
+        skippedCount: result.skipped.length,
+        failedCount: 0,
+        failureReasons: [],
+      };
+      const history = [record, ...get().importHistory].slice(0, 50);
+      saveImportHistory(history);
+
       set({
         customLevels: allCustom,
         pendingConflicts: [],
         pendingAllImportedLevels: [],
+        pendingImportFileName: '',
         allDraftIds,
+        importHistory: history,
       });
       return result;
     },
 
     cancelPendingConflicts: () => {
-      set({ pendingConflicts: [], pendingAllImportedLevels: [] });
+      set({ pendingConflicts: [], pendingAllImportedLevels: [], pendingImportFileName: '' });
+    },
+
+    addImportRecord: (record: ImportRecord) => {
+      const history = [record, ...get().importHistory].slice(0, 50);
+      saveImportHistory(history);
+      set({ importHistory: history });
+    },
+
+    clearImportHistory: () => {
+      saveImportHistory([]);
+      set({ importHistory: [] });
     },
 
     exportCurrentSave: () => {

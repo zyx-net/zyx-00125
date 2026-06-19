@@ -110,3 +110,15 @@ export interface ImportResult {
   overwritten: Level[];
   duplicated: Level[];
 }
+
+export interface ImportRecord {
+  id: string;
+  fileName: string;
+  timestamp: number;
+  newCount: number;
+  overwrittenCount: number;
+  duplicatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  failureReasons: string[];
+}

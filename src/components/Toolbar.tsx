@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { sampleLevels } from '../data/sampleLevels';
-import type { CellType, Color, ConflictResolution } from '../types/game';
+import type { CellType, Color, ConflictResolution, ImportConflict } from '../types/game';
 
 const colorOptions: { value: Color; label: string; color: string }[] = [
   { value: 'red', label: '红', color: 'bg-red-500' },
@@ -19,6 +19,31 @@ const toolOptions: { value: CellType | 'eraser'; label: string; icon: string }[]
   { value: 'mechanism', label: '机关', icon: '⚙️' },
   { value: 'eraser', label: '橡皮擦', icon: '🧹' },
 ];
+
+function usePreviewStats(
+  allLevels: { id: string }[],
+  conflicts: ImportConflict[],
+  resolutions: Map<string, ConflictResolution>,
+) {
+  return useMemo(() => {
+    const conflictIds = new Set(conflicts.map(c => c.incomingLevel.id));
+    let newCount = 0;
+    let overwriteCount = 0;
+    let duplicateCount = 0;
+    let skipCount = 0;
+    for (const lv of allLevels) {
+      if (!conflictIds.has(lv.id)) {
+        newCount++;
+      } else {
+        const res = resolutions.get(lv.id) || 'duplicate';
+        if (res === 'overwrite') overwriteCount++;
+        else if (res === 'duplicate') duplicateCount++;
+        else skipCount++;
+      }
+    }
+    return { newCount, overwriteCount, duplicateCount, skipCount };
+  }, [allLevels, conflicts, resolutions]);
+}
 
 export const Toolbar: React.FC = () => {
   const {
@@ -46,6 +71,8 @@ export const Toolbar: React.FC = () => {
     isDraftRestored,
     allDraftIds,
     pendingConflicts,
+    pendingAllImportedLevels,
+    pendingImportFileName,
     resolveImportConflicts,
     cancelPendingConflicts,
     discardCurrentDraft,
@@ -53,6 +80,8 @@ export const Toolbar: React.FC = () => {
     undo,
     redo,
     editorHistory,
+    importHistory,
+    clearImportHistory,
   } = useGameStore();
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -63,16 +92,21 @@ export const Toolbar: React.FC = () => {
   const [width, setWidth] = useState(8);
   const [height, setHeight] = useState(6);
   const [conflictResolutions, setConflictResolutions] = useState<Map<string, ConflictResolution>>(new Map());
+  const [showImportHistory, setShowImportHistory] = useState(false);
+
+  const showImportPreview = pendingAllImportedLevels.length > 0;
 
   useEffect(() => {
-    if (pendingConflicts.length > 0) {
+    if (showImportPreview) {
       const initial = new Map<string, ConflictResolution>();
       for (const c of pendingConflicts) {
         initial.set(c.incomingLevel.id, 'duplicate');
       }
       setConflictResolutions(initial);
     }
-  }, [pendingConflicts]);
+  }, [showImportPreview, pendingConflicts]);
+
+  const previewStats = usePreviewStats(pendingAllImportedLevels, pendingConflicts, conflictResolutions);
 
   const draftIdSet = useMemo(() => new Set(allDraftIds), [allDraftIds]);
 
@@ -97,7 +131,9 @@ export const Toolbar: React.FC = () => {
 
   const handleImport = async () => {
     const result = await importLevels();
-    showMessage(result.message, result.success ? 'success' : 'error');
+    if (!result.success) {
+      showMessage(result.message, 'error');
+    }
   };
 
   const handleResize = () => {
@@ -108,9 +144,11 @@ export const Toolbar: React.FC = () => {
     setGridSize(width, height);
   };
 
-  const handleConfirmConflicts = () => {
+  const handleConfirmImport = () => {
     const result = resolveImportConflicts(conflictResolutions);
     const parts: string[] = [];
+    const newResult = result.imported.length - result.overwritten.length - result.duplicated.length;
+    if (newResult > 0) parts.push(`新增 ${newResult} 个`);
     if (result.overwritten.length) parts.push(`覆盖 ${result.overwritten.length} 个`);
     if (result.duplicated.length) parts.push(`另存副本 ${result.duplicated.length} 个`);
     if (result.skipped.length) parts.push(`跳过 ${result.skipped.length} 个`);
@@ -143,6 +181,11 @@ export const Toolbar: React.FC = () => {
   const canEditorUndo = editorHistory.currentIndex > 0;
   const canEditorRedo = editorHistory.currentIndex < editorHistory.snapshots.length - 1;
 
+  const conflictIdSet = useMemo(() => new Set(pendingConflicts.map(c => c.incomingLevel.id)), [pendingConflicts]);
+  const nonConflictLevels = useMemo(() => pendingAllImportedLevels.filter(l => !conflictIdSet.has(l.id)), [pendingAllImportedLevels, conflictIdSet]);
+
+  const totalWillImport = previewStats.newCount + previewStats.overwriteCount + previewStats.duplicateCount;
+
   return (
     <div className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 px-4 py-3">
       <div className="flex flex-wrap items-center gap-3 justify-between">
@@ -150,7 +193,7 @@ export const Toolbar: React.FC = () => {
           <h1 className="text-xl font-bold text-cyan-400 tracking-wider">
             🎮 解谜关卡编辑器
           </h1>
-          
+
           <div className="flex bg-gray-800 rounded-lg p-1">
             <button
               className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
@@ -345,7 +388,7 @@ export const Toolbar: React.FC = () => {
           </button>
 
           <button
-            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-all"
+            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-all relative"
             onClick={exportCurrentLevel}
           >
             📤 导出关卡
@@ -440,11 +483,64 @@ export const Toolbar: React.FC = () => {
         </div>
       )}
 
+      {importHistory.length > 0 && !showImportPreview && (
+        <div className="mt-3 pt-3 border-t border-gray-700/50">
+          <button
+            className="text-xs text-gray-400 hover:text-gray-200 transition-all flex items-center gap-1"
+            onClick={() => setShowImportHistory(!showImportHistory)}
+          >
+            📋 导入记录 ({importHistory.length})
+            <span className={`transition-transform ${showImportHistory ? 'rotate-180' : ''}`}>▼</span>
+          </button>
+          {showImportHistory && (
+            <div className="mt-2 space-y-1 max-h-40 overflow-y-auto custom-scrollbar">
+              {importHistory.map((rec) => (
+                <div key={rec.id} className="flex items-center gap-3 text-xs bg-gray-800/40 rounded px-3 py-2">
+                  <span className="text-gray-300 font-mono truncate max-w-[160px]" title={rec.fileName}>
+                    {rec.fileName}
+                  </span>
+                  <span className="text-gray-500">
+                    {new Date(rec.timestamp).toLocaleString()}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    {rec.failedCount > 0 ? (
+                      <span className="text-red-400">失败 {rec.failedCount}</span>
+                    ) : (
+                      <>
+                        {rec.newCount > 0 && <span className="text-green-400">+{rec.newCount}</span>}
+                        {rec.overwrittenCount > 0 && <span className="text-orange-400">↑{rec.overwrittenCount}</span>}
+                        {rec.duplicatedCount > 0 && <span className="text-blue-400">⊂{rec.duplicatedCount}</span>}
+                        {rec.skippedCount > 0 && <span className="text-gray-500">⊘{rec.skippedCount}</span>}
+                      </>
+                    )}
+                  </span>
+                  {rec.failureReasons.length > 0 && (
+                    <span className="text-red-300/70 truncate max-w-[200px]" title={rec.failureReasons.join('; ')}>
+                      {rec.failureReasons[0]}
+                    </span>
+                  )}
+                </div>
+              ))}
+              <button
+                className="text-[10px] text-gray-600 hover:text-gray-400 transition-all mt-1"
+                onClick={() => {
+                  if (window.confirm('确定清空导入记录吗？')) {
+                    clearImportHistory();
+                  }
+                }}
+              >
+                清空记录
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {showSaveDialog && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-md shadow-2xl">
             <h3 className="text-lg font-bold mb-4 text-cyan-400">💾 保存</h3>
-            
+
             <div className="flex gap-2 mb-4">
               <button
                 className={`flex-1 py-2 rounded-lg transition-all ${
@@ -504,122 +600,190 @@ export const Toolbar: React.FC = () => {
         </div>
       )}
 
-      {pendingConflicts.length > 0 && (
+      {showImportPreview && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
-            <h3 className="text-lg font-bold mb-2 text-amber-400">⚠️ 导入冲突检测</h3>
-            <p className="text-sm text-gray-300 mb-4">
-              检测到 <span className="font-bold text-amber-300">{pendingConflicts.length}</span> 个关卡与现有内容冲突，请为每个冲突选择处理方式：
-            </p>
-
-            <div className="flex gap-2 mb-4 pb-4 border-b border-gray-700">
-              <button
-                className="px-3 py-1.5 text-xs bg-red-900/50 hover:bg-red-800/60 text-red-200 border border-red-700/60 rounded transition-all"
-                onClick={() => handleSetAllResolutions('cancel')}
-              >
-                全部取消
-              </button>
-              <button
-                className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/60 text-blue-200 border border-blue-700/60 rounded transition-all"
-                onClick={() => handleSetAllResolutions('duplicate')}
-              >
-                全部另存副本
-              </button>
-              <button
-                className="px-3 py-1.5 text-xs bg-orange-900/50 hover:bg-orange-800/60 text-orange-200 border border-orange-700/60 rounded transition-all"
-                onClick={() => handleSetAllResolutions('overwrite')}
-              >
-                全部覆盖
-              </button>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-cyan-400">📥 导入预览</h3>
+              <span className="text-xs text-gray-500 font-mono truncate max-w-[200px]" title={pendingImportFileName}>
+                {pendingImportFileName}
+              </span>
             </div>
 
-            <div className="overflow-y-auto flex-1 pr-2 space-y-3">
-              {pendingConflicts.map((c) => {
-                const res = conflictResolutions.get(c.incomingLevel.id) || 'duplicate';
-                const conflictLabel = c.conflictType === 'both' ? 'ID 和名称' : c.conflictType === 'id' ? 'ID' : '名称';
-                return (
-                  <div key={c.incomingLevel.id} className="p-4 bg-gray-800/60 border border-gray-700 rounded-lg">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <div className="font-semibold text-white flex items-center gap-2">
-                          <span>{c.incomingLevel.name || '未命名关卡'}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40">
-                            {conflictLabel}冲突
-                          </span>
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">
-                          尺寸 {c.incomingLevel.width}×{c.incomingLevel.height}
-                          {c.existingLevel && (
-                            <span className="ml-2">
-                              → 现有: <span className="text-cyan-300">{c.existingLevel.name}</span>
-                              {' '}({c.existingLevel.width}×{c.existingLevel.height})
-                            </span>
-                          )}
-                        </div>
+            <div className="flex gap-3 mb-4 p-3 bg-gray-800/60 rounded-lg border border-gray-700">
+              {previewStats.newCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                  <span className="text-sm text-green-300 font-medium">将新增 {previewStats.newCount}</span>
+                </div>
+              )}
+              {previewStats.overwriteCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500" />
+                  <span className="text-sm text-orange-300 font-medium">将覆盖 {previewStats.overwriteCount}</span>
+                </div>
+              )}
+              {previewStats.duplicateCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  <span className="text-sm text-blue-300 font-medium">将另存副本 {previewStats.duplicateCount}</span>
+                </div>
+              )}
+              {previewStats.skipCount > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-gray-500" />
+                  <span className="text-sm text-gray-400 font-medium">将跳过 {previewStats.skipCount}</span>
+                </div>
+              )}
+            </div>
+
+            {pendingConflicts.length > 0 && (
+              <div className="flex gap-2 mb-4 pb-4 border-b border-gray-700">
+                <span className="text-xs text-gray-400 self-center mr-1">一键:</span>
+                <button
+                  className="px-3 py-1.5 text-xs bg-orange-900/50 hover:bg-orange-800/60 text-orange-200 border border-orange-700/60 rounded transition-all"
+                  onClick={() => handleSetAllResolutions('overwrite')}
+                >
+                  全部覆盖
+                </button>
+                <button
+                  className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/60 text-blue-200 border border-blue-700/60 rounded transition-all"
+                  onClick={() => handleSetAllResolutions('duplicate')}
+                >
+                  全部另存副本
+                </button>
+                <button
+                  className="px-3 py-1.5 text-xs bg-gray-700/50 hover:bg-gray-600/60 text-gray-300 border border-gray-600/60 rounded transition-all"
+                  onClick={() => handleSetAllResolutions('cancel')}
+                >
+                  全部跳过
+                </button>
+              </div>
+            )}
+
+            <div className="overflow-y-auto flex-1 pr-2 space-y-2">
+              {nonConflictLevels.length > 0 && (
+                <div className="mb-2">
+                  <div className="text-xs text-gray-500 mb-1.5 font-medium uppercase tracking-wider">新增关卡</div>
+                  {nonConflictLevels.map((lv) => (
+                    <div key={lv.id} className="p-3 bg-green-900/20 border border-green-800/40 rounded-lg mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-400 text-sm">✅</span>
+                        <span className="font-medium text-green-200 text-sm">{lv.name || '未命名关卡'}</span>
+                        <span className="text-[10px] text-green-500/70 bg-green-900/40 px-1.5 py-0.5 rounded">将新增</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1 ml-6">
+                        ID: {lv.id} · 尺寸 {lv.width}×{lv.height}
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
-                          res === 'overwrite'
-                            ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-500/30'
-                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
-                        }`}
-                        onClick={() => {
-                          const next = new Map(conflictResolutions);
-                          next.set(c.incomingLevel.id, 'overwrite');
-                          setConflictResolutions(next);
-                        }}
-                      >
-                        ⚠️ 覆盖原关卡
-                      </button>
-                      <button
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
-                          res === 'duplicate'
-                            ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30'
-                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
-                        }`}
-                        onClick={() => {
-                          const next = new Map(conflictResolutions);
-                          next.set(c.incomingLevel.id, 'duplicate');
-                          setConflictResolutions(next);
-                        }}
-                      >
-                        📄 另存副本
-                      </button>
-                      <button
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
-                          res === 'cancel'
-                            ? 'bg-gray-600 border-gray-500 text-white'
-                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
-                        }`}
-                        onClick={() => {
-                          const next = new Map(conflictResolutions);
-                          next.set(c.incomingLevel.id, 'cancel');
-                          setConflictResolutions(next);
-                        }}
-                      >
-                        ❌ 取消导入
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              )}
+
+              {pendingConflicts.length > 0 && (
+                <div>
+                  <div className="text-xs text-amber-500/80 mb-1.5 font-medium uppercase tracking-wider">冲突关卡</div>
+                  {pendingConflicts.map((c) => {
+                    const res = conflictResolutions.get(c.incomingLevel.id) || 'duplicate';
+                    const conflictLabel = c.conflictType === 'both' ? 'ID 和名称' : c.conflictType === 'id' ? 'ID' : '名称';
+                    return (
+                      <div key={c.incomingLevel.id} className="p-3 bg-gray-800/60 border border-gray-700 rounded-lg mb-2">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <div className="font-semibold text-white flex items-center gap-2 text-sm">
+                              <span>{c.incomingLevel.name || '未命名关卡'}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40">
+                                {conflictLabel}冲突
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-0.5">
+                              尺寸 {c.incomingLevel.width}×{c.incomingLevel.height}
+                              {c.existingLevel && (
+                                <span className="ml-2">
+                                  → 现有: <span className="text-cyan-300">{c.existingLevel.name}</span>
+                                  {' '}({c.existingLevel.width}×{c.existingLevel.height})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                              res === 'overwrite'
+                                ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(conflictResolutions);
+                              next.set(c.incomingLevel.id, 'overwrite');
+                              setConflictResolutions(next);
+                            }}
+                          >
+                            ⚠️ 覆盖
+                          </button>
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                              res === 'duplicate'
+                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(conflictResolutions);
+                              next.set(c.incomingLevel.id, 'duplicate');
+                              setConflictResolutions(next);
+                            }}
+                          >
+                            📄 另存副本
+                          </button>
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-xs transition-all border ${
+                              res === 'cancel'
+                                ? 'bg-gray-600 border-gray-500 text-white'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(conflictResolutions);
+                              next.set(c.incomingLevel.id, 'cancel');
+                              setConflictResolutions(next);
+                            }}
+                          >
+                            ❌ 跳过
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-700 flex gap-2 justify-end">
-              <button
-                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-all"
-                onClick={cancelPendingConflicts}
-              >
-                全部取消
-              </button>
-              <button
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-all font-semibold"
-                onClick={handleConfirmConflicts}
-              >
-                确认导入 ({Array.from(conflictResolutions.values()).filter(r => r !== 'cancel').length})
-              </button>
+            <div className="mt-4 pt-4 border-t border-gray-700 flex items-center justify-between">
+              <span className="text-sm text-gray-400">
+                共 {pendingAllImportedLevels.length} 个关卡，将导入 {totalWillImport} 个
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-all text-sm"
+                  onClick={() => {
+                    cancelPendingConflicts();
+                    setConflictResolutions(new Map());
+                  }}
+                >
+                  取消导入
+                </button>
+                <button
+                  className={`px-4 py-2 rounded-lg transition-all font-semibold text-sm ${
+                    totalWillImport > 0
+                      ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                      : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  }`}
+                  onClick={totalWillImport > 0 ? handleConfirmImport : undefined}
+                  disabled={totalWillImport === 0}
+                >
+                  确认导入 ({totalWillImport})
+                </button>
+              </div>
             </div>
           </div>
         </div>

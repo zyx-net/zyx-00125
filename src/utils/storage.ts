@@ -1,4 +1,4 @@
-import type { Level, SaveData, GameState, Action, DraftData, EditorState, EditorHistoryState } from '../types/game';
+import type { Level, SaveData, GameState, Action, DraftData, EditorState, EditorHistoryState, ImportRecord } from '../types/game';
 
 const STORAGE_KEYS = {
   LEVELS: 'puzzle_levels',
@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   DRAFT_PREFIX: 'puzzle_draft_',
   DRAFT_INDEX: 'puzzle_draft_index',
   LAST_EDITING_LEVEL: 'puzzle_last_editing_level',
+  IMPORT_HISTORY: 'puzzle_import_history',
 };
 
 export function saveToStorage<T>(key: string, data: T): void {
@@ -189,4 +190,12 @@ export function clearLastEditingLevelId(): void {
 export function getDraftUpdatedAt(levelId: string): number | null {
   const draft = loadDraft(levelId);
   return draft?.updatedAt ?? null;
+}
+
+export function saveImportHistory(records: ImportRecord[]): void {
+  saveToStorage(STORAGE_KEYS.IMPORT_HISTORY, records);
+}
+
+export function loadImportHistory(): ImportRecord[] {
+  return loadFromStorage<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
 }
