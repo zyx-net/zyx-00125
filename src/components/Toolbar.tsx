@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { sampleLevels } from '../data/sampleLevels';
-import type { CellType, Color } from '../types/game';
+import type { CellType, Color, ConflictResolution } from '../types/game';
 
 const colorOptions: { value: Color; label: string; color: string }[] = [
   { value: 'red', label: '红', color: 'bg-red-500' },
@@ -41,6 +41,18 @@ export const Toolbar: React.FC = () => {
     savedGames,
     loadGame,
     showMessage,
+    hasUnsavedDraft,
+    draftUpdatedAt,
+    isDraftRestored,
+    allDraftIds,
+    pendingConflicts,
+    resolveImportConflicts,
+    cancelPendingConflicts,
+    discardCurrentDraft,
+    currentLevel,
+    undo,
+    redo,
+    editorHistory,
   } = useGameStore();
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -50,13 +62,25 @@ export const Toolbar: React.FC = () => {
   const [showSaveSelect, setShowSaveSelect] = useState(false);
   const [width, setWidth] = useState(8);
   const [height, setHeight] = useState(6);
+  const [conflictResolutions, setConflictResolutions] = useState<Map<string, ConflictResolution>>(new Map());
+
+  useEffect(() => {
+    if (pendingConflicts.length > 0) {
+      const initial = new Map<string, ConflictResolution>();
+      for (const c of pendingConflicts) {
+        initial.set(c.incomingLevel.id, 'duplicate');
+      }
+      setConflictResolutions(initial);
+    }
+  }, [pendingConflicts]);
+
+  const draftIdSet = useMemo(() => new Set(allDraftIds), [allDraftIds]);
 
   const handleSave = () => {
     if (!saveName.trim()) {
       showMessage('❌ 请输入名称', 'error');
       return;
     }
-
     if (saveType === 'level') {
       const result = saveLevel(saveName);
       showMessage(result.message, result.success ? 'success' : 'error');
@@ -83,6 +107,41 @@ export const Toolbar: React.FC = () => {
     }
     setGridSize(width, height);
   };
+
+  const handleConfirmConflicts = () => {
+    const result = resolveImportConflicts(conflictResolutions);
+    const parts: string[] = [];
+    if (result.overwritten.length) parts.push(`覆盖 ${result.overwritten.length} 个`);
+    if (result.duplicated.length) parts.push(`另存副本 ${result.duplicated.length} 个`);
+    if (result.skipped.length) parts.push(`跳过 ${result.skipped.length} 个`);
+    if (result.imported.length > 0) {
+      showMessage(`✅ 导入完成：${parts.join('，')}，共导入 ${result.imported.length} 个关卡`, 'success');
+    } else {
+      showMessage(`ℹ️ 导入完成：${parts.join('，')}，未导入任何关卡`, 'info');
+    }
+    setConflictResolutions(new Map());
+  };
+
+  const handleSetAllResolutions = (res: ConflictResolution) => {
+    const next = new Map<string, ConflictResolution>();
+    for (const c of pendingConflicts) {
+      next.set(c.incomingLevel.id, res);
+    }
+    setConflictResolutions(next);
+  };
+
+  const formatTime = (t: number | null) => {
+    if (!t) return '';
+    const d = new Date(t);
+    const now = Date.now();
+    const diff = Math.floor((now - t) / 1000);
+    if (diff < 60) return `${diff} 秒前`;
+    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+    return d.toLocaleTimeString();
+  };
+
+  const canEditorUndo = editorHistory.currentIndex > 0;
+  const canEditorRedo = editorHistory.currentIndex < editorHistory.snapshots.length - 1;
 
   return (
     <div className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 px-4 py-3">
@@ -114,9 +173,64 @@ export const Toolbar: React.FC = () => {
               ✏️ 编辑
             </button>
           </div>
+
+          {hasUnsavedDraft && (
+            <div className={`px-3 py-1 rounded-full text-xs font-semibold flex items-center gap-1 border animate-pulse ${
+              isDraftRestored
+                ? 'bg-amber-900/40 text-amber-300 border-amber-600/60'
+                : 'bg-orange-900/40 text-orange-300 border-orange-600/60'
+            }`}
+              title={draftUpdatedAt ? `上次修改：${new Date(draftUpdatedAt).toLocaleString()}` : ''}
+            >
+              <span>📝</span>
+              <span>{isDraftRestored ? '草稿已恢复' : '草稿未保存'}</span>
+              {draftUpdatedAt && <span className="opacity-70">· {formatTime(draftUpdatedAt)}</span>}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {mode === 'edit' && (
+            <>
+              <button
+                className={`px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-1 ${
+                  canEditorUndo
+                    ? 'bg-gray-800 hover:bg-gray-700'
+                    : 'bg-gray-800/40 text-gray-500 cursor-not-allowed'
+                }`}
+                onClick={undo}
+                disabled={!canEditorUndo}
+                title="撤销编辑 (Ctrl+Z)"
+              >
+                ↩️ 撤销
+              </button>
+              <button
+                className={`px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-1 ${
+                  canEditorRedo
+                    ? 'bg-gray-800 hover:bg-gray-700'
+                    : 'bg-gray-800/40 text-gray-500 cursor-not-allowed'
+                }`}
+                onClick={redo}
+                disabled={!canEditorRedo}
+                title="重做编辑 (Ctrl+Y)"
+              >
+                ↪️ 重做
+              </button>
+              {hasUnsavedDraft && (
+                <button
+                  className="px-3 py-2 bg-yellow-900/50 hover:bg-yellow-800/60 border border-yellow-700/60 text-yellow-200 rounded-lg text-sm transition-all"
+                  onClick={() => {
+                    if (window.confirm('确定放弃当前草稿吗？未保存的编辑将丢失。')) {
+                      discardCurrentDraft();
+                    }
+                  }}
+                >
+                  🗑️ 放弃草稿
+                </button>
+              )}
+            </>
+          )}
+
           <div className="relative">
             <button
               className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-all flex items-center gap-2"
@@ -126,14 +240,16 @@ export const Toolbar: React.FC = () => {
               <span className="text-xs">▼</span>
             </button>
             {showLevelSelect && (
-              <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-48 max-h-60 overflow-y-auto">
+              <div className="absolute top-full left-0 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50 min-w-56 max-h-72 overflow-y-auto">
                 <div className="p-2 text-xs text-gray-400 border-b border-gray-700">
                   样例关卡
                 </div>
                 {sampleLevels.map((level) => (
                   <button
                     key={level.id}
-                    className="w-full px-3 py-2 text-left hover:bg-gray-700 text-sm transition-all"
+                    className={`w-full px-3 py-2 text-left hover:bg-gray-700 text-sm transition-all ${
+                      currentLevel.id === level.id ? 'bg-gray-700/60 border-l-2 border-cyan-500' : ''
+                    }`}
                     onClick={() => {
                       loadSampleLevel(level.id);
                       setShowLevelSelect(false);
@@ -147,18 +263,31 @@ export const Toolbar: React.FC = () => {
                     <div className="p-2 text-xs text-gray-400 border-b border-gray-700 border-t border-gray-700">
                       自定义关卡
                     </div>
-                    {customLevels.map((level) => (
-                      <button
-                        key={level.id}
-                        className="w-full px-3 py-2 text-left hover:bg-gray-700 text-sm transition-all flex justify-between items-center"
-                        onClick={() => {
-                          loadLevel(level);
-                          setShowLevelSelect(false);
-                        }}
-                      >
-                        <span>{level.name}</span>
-                      </button>
-                    ))}
+                    {customLevels.map((level) => {
+                      const hasDraft = draftIdSet.has(level.id);
+                      return (
+                        <button
+                          key={level.id}
+                          className={`w-full px-3 py-2 text-left hover:bg-gray-700 text-sm transition-all flex justify-between items-center ${
+                            currentLevel.id === level.id ? 'bg-gray-700/60 border-l-2 border-cyan-500' : ''
+                          } ${hasDraft ? 'bg-orange-900/10' : ''}`}
+                          onClick={() => {
+                            loadLevel(level);
+                            setShowLevelSelect(false);
+                          }}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span>{level.name}</span>
+                            {hasDraft && (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-orange-700/50 text-orange-200 rounded border border-orange-600/50" title="有未保存的草稿">
+                                草稿
+                              </span>
+                            )}
+                          </span>
+                          {currentLevel.id === level.id && <span className="text-cyan-400 text-xs">●</span>}
+                        </button>
+                      );
+                    })}
                   </>
                 )}
               </div>
@@ -166,10 +295,17 @@ export const Toolbar: React.FC = () => {
           </div>
 
           <button
-            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-all"
-            onClick={() => setShowSaveDialog(true)}
+            className={`px-3 py-2 rounded-lg text-sm transition-all flex items-center gap-1 ${
+              hasUnsavedDraft
+                ? 'bg-orange-600 hover:bg-orange-500 shadow-lg shadow-orange-500/30 text-white font-semibold'
+                : 'bg-gray-800 hover:bg-gray-700'
+            }`}
+            onClick={() => {
+              setSaveName(currentLevel.name && currentLevel.name !== '未命名关卡' ? currentLevel.name : '');
+              setShowSaveDialog(true);
+            }}
           >
-            💾 保存
+            {hasUnsavedDraft ? '💾 保存草稿' : '💾 保存'}
           </button>
 
           <div className="relative">
@@ -341,6 +477,12 @@ export const Toolbar: React.FC = () => {
               autoFocus
             />
 
+            {saveType === 'level' && hasUnsavedDraft && (
+              <div className="mb-4 p-3 bg-orange-900/30 border border-orange-700/50 rounded-lg text-sm text-orange-200">
+                💡 保存成功后将自动清除草稿
+              </div>
+            )}
+
             <div className="flex gap-2 justify-end">
               <button
                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-all"
@@ -356,6 +498,127 @@ export const Toolbar: React.FC = () => {
                 onClick={handleSave}
               >
                 保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingConflicts.length > 0 && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-2xl shadow-2xl max-h-[90vh] flex flex-col">
+            <h3 className="text-lg font-bold mb-2 text-amber-400">⚠️ 导入冲突检测</h3>
+            <p className="text-sm text-gray-300 mb-4">
+              检测到 <span className="font-bold text-amber-300">{pendingConflicts.length}</span> 个关卡与现有内容冲突，请为每个冲突选择处理方式：
+            </p>
+
+            <div className="flex gap-2 mb-4 pb-4 border-b border-gray-700">
+              <button
+                className="px-3 py-1.5 text-xs bg-red-900/50 hover:bg-red-800/60 text-red-200 border border-red-700/60 rounded transition-all"
+                onClick={() => handleSetAllResolutions('cancel')}
+              >
+                全部取消
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-blue-900/50 hover:bg-blue-800/60 text-blue-200 border border-blue-700/60 rounded transition-all"
+                onClick={() => handleSetAllResolutions('duplicate')}
+              >
+                全部另存副本
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-orange-900/50 hover:bg-orange-800/60 text-orange-200 border border-orange-700/60 rounded transition-all"
+                onClick={() => handleSetAllResolutions('overwrite')}
+              >
+                全部覆盖
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-2 space-y-3">
+              {pendingConflicts.map((c) => {
+                const res = conflictResolutions.get(c.incomingLevel.id) || 'duplicate';
+                const conflictLabel = c.conflictType === 'both' ? 'ID 和名称' : c.conflictType === 'id' ? 'ID' : '名称';
+                return (
+                  <div key={c.incomingLevel.id} className="p-4 bg-gray-800/60 border border-gray-700 rounded-lg">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <div className="font-semibold text-white flex items-center gap-2">
+                          <span>{c.incomingLevel.name || '未命名关卡'}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40">
+                            {conflictLabel}冲突
+                          </span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-1">
+                          尺寸 {c.incomingLevel.width}×{c.incomingLevel.height}
+                          {c.existingLevel && (
+                            <span className="ml-2">
+                              → 现有: <span className="text-cyan-300">{c.existingLevel.name}</span>
+                              {' '}({c.existingLevel.width}×{c.existingLevel.height})
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
+                          res === 'overwrite'
+                            ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-500/30'
+                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                        }`}
+                        onClick={() => {
+                          const next = new Map(conflictResolutions);
+                          next.set(c.incomingLevel.id, 'overwrite');
+                          setConflictResolutions(next);
+                        }}
+                      >
+                        ⚠️ 覆盖原关卡
+                      </button>
+                      <button
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
+                          res === 'duplicate'
+                            ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30'
+                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                        }`}
+                        onClick={() => {
+                          const next = new Map(conflictResolutions);
+                          next.set(c.incomingLevel.id, 'duplicate');
+                          setConflictResolutions(next);
+                        }}
+                      >
+                        📄 另存副本
+                      </button>
+                      <button
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm transition-all border ${
+                          res === 'cancel'
+                            ? 'bg-gray-600 border-gray-500 text-white'
+                            : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 text-gray-200'
+                        }`}
+                        onClick={() => {
+                          const next = new Map(conflictResolutions);
+                          next.set(c.incomingLevel.id, 'cancel');
+                          setConflictResolutions(next);
+                        }}
+                      >
+                        ❌ 取消导入
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-700 flex gap-2 justify-end">
+              <button
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg transition-all"
+                onClick={cancelPendingConflicts}
+              >
+                全部取消
+              </button>
+              <button
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg transition-all font-semibold"
+                onClick={handleConfirmConflicts}
+              >
+                确认导入 ({Array.from(conflictResolutions.values()).filter(r => r !== 'cancel').length})
               </button>
             </div>
           </div>

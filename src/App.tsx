@@ -17,7 +17,10 @@ const App: React.FC = () => {
     redo,
     resetLevel,
     restoreFromStorage,
-    showMessage,
+    currentLevel,
+    hasUnsavedDraft,
+    isDraftRestored,
+    draftUpdatedAt,
   } = useGameStore();
 
   const handleKeyDown = useCallback(
@@ -26,6 +29,19 @@ const App: React.FC = () => {
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
+
+      if (ctrlKey) {
+        switch (e.key.toLowerCase()) {
+          case 'z':
+            e.preventDefault();
+            undo();
+            return;
+          case 'y':
+            e.preventDefault();
+            redo();
+            return;
+        }
+      }
 
       if (mode === 'play') {
         let direction: Direction | null = null;
@@ -46,20 +62,6 @@ const App: React.FC = () => {
           case 'arrowright':
           case 'd':
             direction = 'right';
-            break;
-          case 'z':
-            if (ctrlKey) {
-              e.preventDefault();
-              undo();
-              return;
-            }
-            break;
-          case 'y':
-            if (ctrlKey) {
-              e.preventDefault();
-              redo();
-              return;
-            }
             break;
           case 'r':
             if (!ctrlKey) {
@@ -85,11 +87,11 @@ const App: React.FC = () => {
   }, [handleKeyDown]);
 
   useEffect(() => {
-    const restored = restoreFromStorage();
-    if (restored) {
-      showMessage('✅ 已恢复上次游戏进度', 'success');
+    const result = restoreFromStorage();
+    if (!result.restoredGame && !result.restoredDraft) {
+      // no-op: initial message is fine
     }
-  }, [restoreFromStorage, showMessage]);
+  }, [restoreFromStorage]);
 
   const messageBgClass = {
     success: 'bg-green-900/80 border-green-500 text-green-300',
@@ -121,11 +123,22 @@ const App: React.FC = () => {
 
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-4">
-              <h2 className="text-xl font-bold text-gray-200">
-                {useGameStore.getState().gameState.level.name}
+              <h2 className="text-xl font-bold text-gray-200 flex items-center justify-center gap-2">
+                {currentLevel.name || '未命名关卡'}
+                {hasUnsavedDraft && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full border animate-pulse ${
+                    isDraftRestored
+                      ? 'bg-amber-900/40 text-amber-300 border-amber-600/60'
+                      : 'bg-orange-900/40 text-orange-300 border-orange-600/60'
+                  }`}
+                    title={draftUpdatedAt ? `草稿更新：${new Date(draftUpdatedAt).toLocaleString()}` : ''}
+                  >
+                    📝 {isDraftRestored ? '已恢复' : '草稿'}
+                  </span>
+                )}
               </h2>
               <p className="text-sm text-gray-500">
-                {mode === 'edit' ? '✏️ 编辑模式' : '🎮 游玩模式'}
+                {mode === 'edit' ? '✏️ 编辑模式 · 自动保存草稿中' : '🎮 游玩模式'}
               </p>
             </div>
 

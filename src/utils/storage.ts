@@ -1,10 +1,13 @@
-import type { Level, SaveData, GameState, Action } from '../types/game';
+import type { Level, SaveData, GameState, Action, DraftData, EditorState, EditorHistoryState } from '../types/game';
 
 const STORAGE_KEYS = {
   LEVELS: 'puzzle_levels',
   SAVES: 'puzzle_saves',
   BEST_MOVES: 'puzzle_best_moves',
   CURRENT_STATE: 'puzzle_current_state',
+  DRAFT_PREFIX: 'puzzle_draft_',
+  DRAFT_INDEX: 'puzzle_draft_index',
+  LAST_EDITING_LEVEL: 'puzzle_last_editing_level',
 };
 
 export function saveToStorage<T>(key: string, data: T): void {
@@ -93,4 +96,97 @@ export function clearCurrentState(): void {
 
 export function clearAllStorage(): void {
   Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+  const draftKeys: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith(STORAGE_KEYS.DRAFT_PREFIX)) {
+      draftKeys.push(k);
+    }
+  }
+  draftKeys.forEach(k => localStorage.removeItem(k));
+}
+
+function draftKey(levelId: string): string {
+  return `${STORAGE_KEYS.DRAFT_PREFIX}${levelId}`;
+}
+
+export function saveDraft(
+  levelId: string,
+  level: Level,
+  editorState: EditorState,
+  editorHistory: EditorHistoryState
+): DraftData {
+  const now = Date.now();
+  const existing = loadDraft(levelId);
+  const draft: DraftData = {
+    levelId,
+    level,
+    editorState,
+    editorHistory,
+    savedAt: existing?.savedAt ?? now,
+    updatedAt: now,
+  };
+  saveToStorage(draftKey(levelId), draft);
+  const index = loadDraftIndex();
+  if (!index.includes(levelId)) {
+    index.push(levelId);
+    saveToStorage(STORAGE_KEYS.DRAFT_INDEX, index);
+  }
+  return draft;
+}
+
+export function loadDraft(levelId: string): DraftData | null {
+  return loadFromStorage<DraftData | null>(draftKey(levelId), null);
+}
+
+export function deleteDraft(levelId: string): void {
+  localStorage.removeItem(draftKey(levelId));
+  const index = loadDraftIndex().filter(id => id !== levelId);
+  saveToStorage(STORAGE_KEYS.DRAFT_INDEX, index);
+}
+
+export function loadDraftIndex(): string[] {
+  return loadFromStorage<string[]>(STORAGE_KEYS.DRAFT_INDEX, []);
+}
+
+export function loadAllDrafts(): DraftData[] {
+  const index = loadDraftIndex();
+  const drafts: DraftData[] = [];
+  for (const id of index) {
+    const draft = loadDraft(id);
+    if (draft) drafts.push(draft);
+  }
+  return drafts;
+}
+
+export function hasDraft(levelId: string): boolean {
+  return loadDraft(levelId) !== null;
+}
+
+export function isLevelDirty(levelId: string, currentLevel: Level): boolean {
+  const draft = loadDraft(levelId);
+  if (!draft) return false;
+  return JSON.stringify(draft.level.grid) !== JSON.stringify(currentLevel.grid)
+    || JSON.stringify(draft.level.startPos) !== JSON.stringify(currentLevel.startPos)
+    || JSON.stringify(draft.level.endPos) !== JSON.stringify(currentLevel.endPos)
+    || draft.level.name !== currentLevel.name
+    || draft.level.width !== currentLevel.width
+    || draft.level.height !== currentLevel.height;
+}
+
+export function saveLastEditingLevelId(levelId: string): void {
+  saveToStorage(STORAGE_KEYS.LAST_EDITING_LEVEL, levelId);
+}
+
+export function loadLastEditingLevelId(): string | null {
+  return loadFromStorage<string | null>(STORAGE_KEYS.LAST_EDITING_LEVEL, null);
+}
+
+export function clearLastEditingLevelId(): void {
+  localStorage.removeItem(STORAGE_KEYS.LAST_EDITING_LEVEL);
+}
+
+export function getDraftUpdatedAt(levelId: string): number | null {
+  const draft = loadDraft(levelId);
+  return draft?.updatedAt ?? null;
 }

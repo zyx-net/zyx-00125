@@ -75,3 +75,38 @@ export interface EditorState {
   gridWidth: number;
   gridHeight: number;
 }
+
+export interface EditorSnapshot {
+  level: Level;
+  editorState: EditorState;
+  timestamp: number;
+}
+
+export interface EditorHistoryState {
+  snapshots: EditorSnapshot[];
+  currentIndex: number;
+}
+
+export interface DraftData {
+  levelId: string;
+  level: Level;
+  editorState: EditorState;
+  editorHistory: EditorHistoryState;
+  savedAt: number;
+  updatedAt: number;
+}
+
+export type ConflictResolution = 'overwrite' | 'duplicate' | 'cancel';
+
+export interface ImportConflict {
+  incomingLevel: Level;
+  existingLevel?: Level;
+  conflictType: 'id' | 'name' | 'both';
+}
+
+export interface ImportResult {
+  imported: Level[];
+  skipped: Level[];
+  overwritten: Level[];
+  duplicated: Level[];
+}

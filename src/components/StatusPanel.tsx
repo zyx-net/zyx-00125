@@ -19,24 +19,44 @@ const colorBorder: Record<Color, string> = {
 };
 
 export const StatusPanel: React.FC = () => {
-  const { gameState, mode, getBestMoves } = useGameStore();
+  const { gameState, mode, getBestMoves, hasUnsavedDraft, draftUpdatedAt, isDraftRestored, currentLevel, editorHistory } = useGameStore();
   const { player, turn, isWin, level } = gameState;
   const doors = getAllDoors(gameState);
   const mechanisms = getAllMechanisms(gameState);
   const bestMoves = getBestMoves(level.id);
 
   if (mode === 'edit') {
+    const totalSnaps = editorHistory.snapshots.length;
     return (
       <div className="bg-gray-900/80 backdrop-blur-sm rounded-xl border border-gray-700 p-4 shadow-xl">
-        <h3 className="text-lg font-bold text-orange-400 mb-3">✏️ 编辑模式</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-bold text-orange-400">✏️ 编辑模式</h3>
+          {hasUnsavedDraft && (
+            <span className={`text-[10px] px-2 py-1 rounded-full border animate-pulse ${
+              isDraftRestored
+                ? 'bg-amber-900/40 text-amber-300 border-amber-600/60'
+                : 'bg-orange-900/40 text-orange-300 border-orange-600/60'
+            }`}>
+              📝 {isDraftRestored ? '草稿已恢复' : '草稿未保存'}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-gray-300 mb-2">
-          点击网格放置或删除元素
+          关卡：<span className="text-cyan-300 font-medium">{currentLevel.name || '未命名关卡'}</span>
         </p>
-        <div className="text-xs text-gray-400 space-y-1">
+        <div className="text-xs text-gray-400 space-y-1 mb-3">
+          <p>• 尺寸：{currentLevel.width} × {currentLevel.height}</p>
+          <p>• 历史记录：{editorHistory.currentIndex + 1} / {totalSnaps}</p>
+          {draftUpdatedAt && (
+            <p>• 草稿更新：{new Date(draftUpdatedAt).toLocaleString()}</p>
+          )}
+        </div>
+        <div className="text-xs text-gray-400 space-y-1 pt-3 border-t border-gray-700">
           <p>• 选择工具和颜色后点击网格</p>
           <p>• 起点和终点只能有一个</p>
-          <p>• 保存时会自动验证关卡</p>
-          <p>• 必须确保终点可达</p>
+          <p>• 编辑会自动保存为草稿</p>
+          <p>• 保存后草稿会被清除</p>
+          <p>• Ctrl+Z 撤销，Ctrl+Y 重做</p>
         </div>
       </div>
     );
