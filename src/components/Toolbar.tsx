@@ -34,6 +34,7 @@ export const Toolbar: React.FC = () => {
     saveGame,
     resetLevel,
     exportCurrentLevel,
+    exportAllLevels,
     importLevels,
     exportCurrentSave,
     customLevels,
@@ -212,6 +213,13 @@ export const Toolbar: React.FC = () => {
             onClick={exportCurrentLevel}
           >
             📤 导出关卡
+          </button>
+
+          <button
+            className="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm transition-all"
+            onClick={exportAllLevels}
+          >
+            📦 导出关卡包
           </button>
 
           <button

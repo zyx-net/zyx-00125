@@ -122,7 +122,7 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-4">
               <h2 className="text-xl font-bold text-gray-200">
-                {useGameStore.getState().currentLevel.name}
+                {useGameStore.getState().gameState.level.name}
               </h2>
               <p className="text-sm text-gray-500">
                 {mode === 'edit' ? '✏️ 编辑模式' : '🎮 游玩模式'}

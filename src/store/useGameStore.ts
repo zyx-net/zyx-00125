@@ -406,9 +406,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   exportCurrentLevel: () => {
-    const { currentLevel } = get();
-    exportLevel(currentLevel);
-    get().showMessage(`✅ 关卡 "${currentLevel.name}" 已导出`, 'success');
+    const { gameState, mode, currentLevel } = get();
+    const levelToExport = mode === 'play' ? gameState.level : currentLevel;
+    exportLevel(levelToExport);
+    get().showMessage(`✅ 关卡 "${levelToExport.name}" 已导出`, 'success');
   },
 
   exportAllLevels: () => {

@@ -91,7 +91,8 @@ const Cell: React.FC<CellProps> = ({ cell, isPlayer, onClick, mode }) => {
 
 export const Grid: React.FC = () => {
   const { currentLevel, gameState, mode, handleCellClick } = useGameStore();
-  const { grid, width, height } = currentLevel;
+  const level = mode === 'play' ? gameState.level : currentLevel;
+  const { grid, width, height } = level;
   const playerPos = gameState.player.position;
 
   return (
