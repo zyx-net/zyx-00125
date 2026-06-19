@@ -17,6 +17,7 @@ import type {
   ImportRecord,
   ImportLevelDetail,
   LevelImportOutcome,
+  ImportFailedItem,
 } from '../types/game';
 import {
   createInitialGameState,
@@ -71,6 +72,8 @@ import {
   exportSaveData,
   importLevelPack,
   triggerFileInput,
+  exportImportRecordAsJson,
+  type ImportPackResult,
 } from '../utils/export';
 
 interface GameStore {
@@ -90,10 +93,12 @@ interface GameStore {
   draftUpdatedAt: number | null;
   pendingConflicts: ImportConflict[];
   pendingAllImportedLevels: Level[];
+  pendingFailedItems: ImportFailedItem[];
   pendingImportFileName: string;
   isDraftRestored: boolean;
   allDraftIds: string[];
   importHistory: ImportRecord[];
+  lastImportResult: ImportRecord | null;
 
   setMode: (mode: Mode) => void;
   setEditorTool: (tool: CellType | 'eraser') => void;
@@ -113,7 +118,7 @@ interface GameStore {
   deleteSavedGame: (id: string) => void;
   exportCurrentLevel: () => void;
   exportAllLevels: () => void;
-  importLevels: () => Promise<{ success: boolean; message: string; conflicts?: ImportConflict[] }>;
+  importLevels: () => Promise<{ success: boolean; message: string; conflicts?: ImportConflict[]; failedCount?: number }>;
   resolveImportConflicts: (
     resolutions: Map<string, ConflictResolution>
   ) => ImportResult;
@@ -121,6 +126,7 @@ interface GameStore {
   addImportRecord: (record: ImportRecord) => void;
   clearImportHistory: () => void;
   exportCurrentSave: () => void;
+  reExportImportResult: (recordId: string) => boolean;
   getBestMoves: (levelId: string) => number | null;
   showMessage: (message: string, type?: 'success' | 'error' | 'info') => void;
   restoreFromStorage: () => { restoredGame: boolean; restoredDraft: boolean; restoredDraftLevelId?: string };
@@ -198,10 +204,12 @@ export const useGameStore = create<GameStore>((set, get) => {
     draftUpdatedAt: null,
     pendingConflicts: [],
     pendingAllImportedLevels: [],
+    pendingFailedItems: [],
     pendingImportFileName: '',
     isDraftRestored: false,
     allDraftIds: [],
     importHistory: loadImportHistory(),
+    lastImportResult: null,
 
     setMode: (mode: Mode) => {
       const prev = get().mode;
@@ -766,26 +774,76 @@ export const useGameStore = create<GameStore>((set, get) => {
               }
             }
 
-            const levels = await importLevelPack(file);
+            const packResult: ImportPackResult = await importLevelPack(file);
+            const { validLevels, failedItems } = packResult;
             const { customLevels } = get();
-            const conflicts = detectConflicts(levels, customLevels);
+
+            if (validLevels.length === 0 && failedItems.length === 0) {
+              throw new Error('关卡包中没有有效的关卡');
+            }
+
+            const conflicts = detectConflicts(validLevels, customLevels);
+            const failedDetails: ImportLevelDetail[] = failedItems.map(item => ({
+              levelId: item.levelId,
+              levelName: item.levelName,
+              outcome: 'failed' as LevelImportOutcome,
+              failureReason: item.reason,
+            }));
+
+            if (validLevels.length === 0 && failedItems.length > 0) {
+              const record: ImportRecord = {
+                id: generateId(),
+                fileName: file.name,
+                fileSize: file.size,
+                fileHash,
+                timestamp: Date.now(),
+                newCount: 0,
+                overwrittenCount: 0,
+                duplicatedCount: 0,
+                skippedCount: 0,
+                failedCount: failedItems.length,
+                failureReasons: failedItems.map(f => f.reason),
+                levelDetails: failedDetails,
+              };
+              const history = [record, ...get().importHistory].slice(0, 50);
+              saveImportHistory(history);
+              set({ importHistory: history, lastImportResult: record });
+              resolve({
+                success: false,
+                message: `⚠️ 关卡包中 ${failedItems.length} 个关卡全部验证失败`,
+                failedCount: failedItems.length,
+              });
+              return;
+            }
+
             set({
               pendingConflicts: conflicts,
-              pendingAllImportedLevels: levels,
+              pendingAllImportedLevels: validLevels,
+              pendingFailedItems: failedItems,
               pendingImportFileName: file.name,
             });
 
             (get() as any)._pendingFileMeta = {
               fileSize: file.size,
               fileHash,
+              failedDetails,
             };
+
+            const total = validLevels.length + failedItems.length;
+            let message = `📋 即将导入 ${validLevels.length} 个关卡`;
+            if (failedItems.length > 0) {
+              message += `，${failedItems.length} 个验证失败`;
+            }
+            if (conflicts.length > 0) {
+              message += `，检测到 ${conflicts.length} 个冲突`;
+            }
+            message += '，请确认';
 
             resolve({
               success: true,
-              message: conflicts.length > 0
-                ? `⚠️ 检测到 ${conflicts.length} 个冲突，请选择处理方式`
-                : `📋 即将导入 ${levels.length} 个关卡，请确认`,
+              message,
               conflicts,
+              failedCount: failedItems.length,
             });
           } catch (error: unknown) {
             const message = error instanceof Error ? error.message : '导入失败';
@@ -818,7 +876,7 @@ export const useGameStore = create<GameStore>((set, get) => {
             };
             const history = [record, ...get().importHistory].slice(0, 50);
             saveImportHistory(history);
-            set({ importHistory: history });
+            set({ importHistory: history, lastImportResult: record });
             resolve({ success: false, message });
           }
         });
@@ -826,7 +884,13 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     resolveImportConflicts: (resolutions: Map<string, ConflictResolution>): ImportResult => {
-      const { pendingAllImportedLevels, pendingConflicts, customLevels, pendingImportFileName } = get();
+      const {
+        pendingAllImportedLevels,
+        pendingConflicts,
+        customLevels,
+        pendingImportFileName,
+        pendingFailedItems,
+      } = get();
       const conflictMap = new Map(pendingConflicts.map(c => [c.incomingLevel.id, c]));
       let allCustom = [...customLevels];
       const result: ImportResult = {
@@ -922,11 +986,21 @@ export const useGameStore = create<GameStore>((set, get) => {
         }
       }
 
+      for (const failed of pendingFailedItems) {
+        levelDetails.push({
+          levelId: failed.levelId,
+          levelName: failed.levelName,
+          outcome: 'failed',
+          failureReason: failed.reason,
+        });
+      }
+
       saveCustomLevels(allCustom);
       const allDraftIds = get().allDraftIds.filter(id => allCustom.some(l => l.id === id) || hasDraft(id));
 
       const newCount = result.imported.length - result.overwritten.length - result.duplicated.length;
       const pendingMeta = (get() as any)._pendingFileMeta || {};
+      const failureReasons = pendingFailedItems.map(f => f.reason);
       const record: ImportRecord = {
         id: generateId(),
         fileName: pendingImportFileName,
@@ -937,8 +1011,8 @@ export const useGameStore = create<GameStore>((set, get) => {
         overwrittenCount: result.overwritten.length,
         duplicatedCount: result.duplicated.length,
         skippedCount: result.skipped.length,
-        failedCount: 0,
-        failureReasons: [],
+        failedCount: pendingFailedItems.length,
+        failureReasons,
         levelDetails,
       };
       const history = [record, ...get().importHistory].slice(0, 50);
@@ -950,16 +1024,23 @@ export const useGameStore = create<GameStore>((set, get) => {
         customLevels: allCustom,
         pendingConflicts: [],
         pendingAllImportedLevels: [],
+        pendingFailedItems: [],
         pendingImportFileName: '',
         allDraftIds,
         importHistory: history,
+        lastImportResult: record,
       });
       return result;
     },
 
     cancelPendingConflicts: () => {
       (get() as any)._pendingFileMeta = null;
-      set({ pendingConflicts: [], pendingAllImportedLevels: [], pendingImportFileName: '' });
+      set({
+        pendingConflicts: [],
+        pendingAllImportedLevels: [],
+        pendingFailedItems: [],
+        pendingImportFileName: '',
+      });
     },
 
     addImportRecord: (record: ImportRecord) => {
@@ -974,7 +1055,45 @@ export const useGameStore = create<GameStore>((set, get) => {
 
     clearImportHistory: () => {
       saveImportHistory([]);
-      set({ importHistory: [] });
+      set({ importHistory: [], lastImportResult: null });
+    },
+
+    reExportImportResult: (recordId: string): boolean => {
+      const record = get().importHistory.find(r => r.id === recordId);
+      if (!record) {
+        get().showMessage('❌ 未找到该导入记录', 'error');
+        return false;
+      }
+
+      const levelIds = new Set<string>();
+      for (const detail of record.levelDetails) {
+        if (detail.outcome === 'new' && detail.newLevelId) {
+          levelIds.add(detail.newLevelId);
+        } else if (detail.outcome === 'overwritten' && detail.newLevelId) {
+          levelIds.add(detail.newLevelId);
+        } else if (detail.outcome === 'duplicated' && detail.newLevelId) {
+          levelIds.add(detail.newLevelId);
+        }
+      }
+
+      const { customLevels } = get();
+      const allLevels = [...sampleLevels, ...customLevels];
+      const levelsToExport: Level[] = [];
+      for (const id of levelIds) {
+        const level = allLevels.find(l => l.id === id);
+        if (level) {
+          levelsToExport.push(level);
+        }
+      }
+
+      if (levelsToExport.length === 0) {
+        get().showMessage('⚠️ 没有可导出的关卡', 'error');
+        return false;
+      }
+
+      exportImportRecordAsJson(record, levelsToExport);
+      get().showMessage(`✅ 已导出 ${levelsToExport.length} 个关卡的导入结果`, 'success');
+      return true;
     },
 
     exportCurrentSave: () => {

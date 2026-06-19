@@ -157,14 +157,33 @@ export function getColorName(color: Color): string {
   return names[color];
 }
 
-export function validateLevel(level: Level): { valid: boolean; message: string } {
+export function validateLevel(level: unknown): { valid: boolean; message: string } {
+  if (!level || typeof level !== 'object') {
+    return { valid: false, message: '❌ 关卡数据格式错误' };
+  }
+
+  const lvl = level as Record<string, unknown>;
+  if (!lvl.grid || !Array.isArray(lvl.grid)) {
+    return { valid: false, message: '❌ 缺少 grid 字段或格式错误' };
+  }
+  if (!lvl.startPos || typeof lvl.startPos !== 'object') {
+    return { valid: false, message: '❌ 缺少起点位置' };
+  }
+  if (!lvl.endPos || typeof lvl.endPos !== 'object') {
+    return { valid: false, message: '❌ 缺少终点位置' };
+  }
+  if (typeof lvl.width !== 'number' || typeof lvl.height !== 'number') {
+    return { valid: false, message: '❌ 缺少 width 或 height 字段' };
+  }
+
   const startCells = [];
   const endCells = [];
-  
-  for (const row of level.grid) {
-    for (const cell of row) {
-      if (cell.element?.type === 'start') startCells.push(cell);
-      if (cell.element?.type === 'end') endCells.push(cell);
+
+  for (const row of lvl.grid as unknown[][]) {
+    for (const cell of row as unknown[]) {
+      const c = cell as { element?: { type?: string } };
+      if (c.element?.type === 'start') startCells.push(cell);
+      if (c.element?.type === 'end') endCells.push(cell);
     }
   }
 
@@ -181,7 +200,7 @@ export function validateLevel(level: Level): { valid: boolean; message: string }
     return { valid: false, message: '❌ 关卡有多个终点，只能有一个' };
   }
 
-  if (!isEndReachable(level)) {
+  if (!isEndReachable(lvl as unknown as Level)) {
     return { valid: false, message: '❌ 终点不可达，请调整关卡设计' };
   }
 

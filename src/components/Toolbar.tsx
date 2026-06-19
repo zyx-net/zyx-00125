@@ -24,6 +24,7 @@ function usePreviewStats(
   allLevels: { id: string }[],
   conflicts: ImportConflict[],
   resolutions: Map<string, ConflictResolution>,
+  failedCount: number = 0,
 ) {
   return useMemo(() => {
     const conflictIds = new Set(conflicts.map(c => c.incomingLevel.id));
@@ -41,8 +42,8 @@ function usePreviewStats(
         else skipCount++;
       }
     }
-    return { newCount, overwriteCount, duplicateCount, skipCount };
-  }, [allLevels, conflicts, resolutions]);
+    return { newCount, overwriteCount, duplicateCount, skipCount, failedCount };
+  }, [allLevels, conflicts, resolutions, failedCount]);
 }
 
 export const Toolbar: React.FC = () => {
@@ -72,6 +73,7 @@ export const Toolbar: React.FC = () => {
     allDraftIds,
     pendingConflicts,
     pendingAllImportedLevels,
+    pendingFailedItems,
     pendingImportFileName,
     resolveImportConflicts,
     cancelPendingConflicts,
@@ -82,6 +84,7 @@ export const Toolbar: React.FC = () => {
     editorHistory,
     importHistory,
     clearImportHistory,
+    reExportImportResult,
   } = useGameStore();
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -107,7 +110,12 @@ export const Toolbar: React.FC = () => {
     }
   }, [showImportPreview, pendingConflicts]);
 
-  const previewStats = usePreviewStats(pendingAllImportedLevels, pendingConflicts, conflictResolutions);
+  const previewStats = usePreviewStats(
+    pendingAllImportedLevels,
+    pendingConflicts,
+    conflictResolutions,
+    pendingFailedItems.length,
+  );
 
   const draftIdSet = useMemo(() => new Set(allDraftIds), [allDraftIds]);
 
@@ -501,11 +509,11 @@ export const Toolbar: React.FC = () => {
                 return (
                   <div key={rec.id} className="bg-gray-800/40 rounded overflow-hidden">
                     <div
-                      className={`flex items-center gap-3 text-xs px-3 py-2 cursor-pointer hover:bg-gray-800/60 transition-all ${
-                        hasDetails ? '' : 'cursor-default'
+                      className={`flex items-center gap-3 text-xs px-3 py-2 transition-all ${
+                        hasDetails ? 'cursor-pointer hover:bg-gray-800/60' : 'cursor-default'
                       }`}
-                      onClick={() => {
-                        if (hasDetails) {
+                      onClick={(e) => {
+                        if (hasDetails && !(e.target as HTMLElement).closest('.no-expand')) {
                           setExpandedHistoryId(isExpanded ? null : rec.id);
                         }
                       }}
@@ -537,6 +545,18 @@ export const Toolbar: React.FC = () => {
                         <span className="text-red-300/70 truncate max-w-[200px]" title={rec.failureReasons.join('; ')}>
                           {rec.failureReasons[0]}
                         </span>
+                      )}
+                      {rec.failedCount === 0 && (rec.newCount > 0 || rec.overwrittenCount > 0 || rec.duplicatedCount > 0) && (
+                        <button
+                          className="no-expand ml-auto text-[10px] px-2 py-1 bg-cyan-900/40 hover:bg-cyan-800/50 text-cyan-300 border border-cyan-700/50 rounded transition-all flex-shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reExportImportResult(rec.id);
+                          }}
+                          title="导出这次导入的关卡结果"
+                        >
+                          📤 导出结果
+                        </button>
                       )}
                     </div>
                     {isExpanded && hasDetails && (
@@ -706,6 +726,12 @@ export const Toolbar: React.FC = () => {
                     <span className="text-xs sm:text-sm text-gray-400 font-medium">将跳过 {previewStats.skipCount}</span>
                   </div>
                 )}
+                {previewStats.failedCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-red-300 font-medium">验证失败 {previewStats.failedCount}</span>
+                  </div>
+                )}
               </div>
 
               {pendingConflicts.length > 0 && (
@@ -746,6 +772,24 @@ export const Toolbar: React.FC = () => {
                       </div>
                       <div className="text-[11px] text-gray-500 mt-1 ml-6">
                         ID: {lv.id.slice(0, 14)}… · 尺寸 {lv.width}×{lv.height}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pendingFailedItems.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[11px] sm:text-xs text-red-500/80 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">验证失败</div>
+                  {pendingFailedItems.map((item) => (
+                    <div key={item.levelId} className="p-2.5 sm:p-3 bg-red-900/20 border border-red-800/40 rounded-lg mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-400 text-sm">❌</span>
+                        <span className="font-medium text-red-200 text-sm">{item.levelName || '未命名关卡'}</span>
+                        <span className="text-[10px] text-red-500/70 bg-red-900/40 px-1.5 py-0.5 rounded flex-shrink-0">验证失败</span>
+                      </div>
+                      <div className="text-[11px] text-red-400/70 mt-1 ml-6">
+                        原因: {item.reason}
                       </div>
                     </div>
                   ))}
@@ -832,7 +876,9 @@ export const Toolbar: React.FC = () => {
 
             <div className="sticky bottom-0 z-10 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0 shadow-[0_-4px_16px_rgba(0,0,0,0.4)]">
               <span className="text-xs sm:text-sm text-gray-400 text-center sm:text-left">
-                共 {pendingAllImportedLevels.length} 个关卡，将导入 {totalWillImport} 个
+                共 {pendingAllImportedLevels.length + pendingFailedItems.length} 个关卡
+                {pendingFailedItems.length > 0 && `（失败 ${pendingFailedItems.length}）`}
+                ，将导入 {totalWillImport} 个
               </span>
               <div className="flex gap-2 w-full sm:w-auto">
                 <button

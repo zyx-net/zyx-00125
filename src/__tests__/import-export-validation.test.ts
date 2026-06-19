@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Level, ConflictResolution, ImportRecord } from '../types/game';
+import type { ImportPackResult } from '../utils/export';
 import { createEmptyGrid, generateId, setCell, cloneGrid } from '../game/grid';
 import {
   createEditorHistory,
@@ -888,11 +889,425 @@ describe('已有功能不受影响: 保存、撤销/重做、关卡游玩', () =
       skippedCount: 0,
       failedCount: 0,
       failureReasons: [],
+      levelDetails: [],
     });
 
     const reloaded = loadCustomLevels();
     expect(reloaded.length).toBe(1);
     expect(reloaded[0].id).toBe('clean-1');
     expect(reloaded[0].name).toBe('干净关卡');
+  });
+});
+
+describe('新功能: 失败项预览与导入结果导出', () => {
+  beforeEach(() => {
+    ls.clear();
+    useGameStore.setState({
+      customLevels: [],
+      pendingConflicts: [],
+      pendingAllImportedLevels: [],
+      pendingFailedItems: [],
+      pendingImportFileName: '',
+      importHistory: [],
+      allDraftIds: [],
+      lastImportResult: null,
+    });
+  });
+
+  it('importLevelPack 返回 ImportPackResult，包含 validLevels 和 failedItems', () => {
+    const validLv = makeLevel({ id: 'valid-1', name: '有效关卡' });
+    const invalidLv = { id: 'invalid-1', name: '无效关卡' };
+    const pack = makePack([validLv, invalidLv as any]);
+    const jsonStr = JSON.stringify(pack);
+
+    const parsed = JSON.parse(jsonStr);
+    expect(parsed.levels.length).toBe(2);
+
+    const result: ImportPackResult = { validLevels: [], failedItems: [] };
+    for (let i = 0; i < parsed.levels.length; i++) {
+      const level = parsed.levels[i];
+      const validation = validateLevel(level);
+      if (validation.valid) {
+        result.validLevels.push(level);
+      } else {
+        result.failedItems.push({
+          levelData: level,
+          levelName: level?.name || `关卡 ${i + 1}`,
+          levelId: level?.id || `failed-${generateId()}`,
+          reason: validation.message || '关卡验证失败',
+        });
+      }
+    }
+
+    expect(result.validLevels.length).toBe(1);
+    expect(result.validLevels[0].id).toBe('valid-1');
+    expect(result.failedItems.length).toBe(1);
+    expect(result.failedItems[0].levelId).toBe('invalid-1');
+    expect(result.failedItems[0].levelName).toBe('无效关卡');
+    expect(result.failedItems[0].reason).toContain('缺少');
+  });
+
+  it('混合包（2有效+1失败）导入：预览显示失败项，确认后失败项记入历史', () => {
+    const lv1 = makeLevel({ id: 'ok-1', name: '有效1' });
+    const lv2 = makeLevel({ id: 'ok-2', name: '有效2' });
+    const failedItem = {
+      levelData: { id: 'bad', name: '坏关卡' },
+      levelName: '坏关卡',
+      levelId: 'bad',
+      reason: '缺少必要字段',
+    };
+
+    useGameStore.setState({
+      pendingAllImportedLevels: [lv1, lv2],
+      pendingFailedItems: [failedItem],
+      pendingImportFileName: 'mixed-valid-fail.json',
+    });
+
+    const resolutions = new Map<string, ConflictResolution>();
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(2);
+    expect(useGameStore.getState().pendingFailedItems.length).toBe(0);
+
+    const history = useGameStore.getState().importHistory;
+    expect(history.length).toBe(1);
+    expect(history[0].failedCount).toBe(1);
+    expect(history[0].failureReasons[0]).toBe('缺少必要字段');
+    expect(history[0].levelDetails.length).toBe(3);
+
+    const failedDetail = history[0].levelDetails.find(d => d.outcome === 'failed');
+    expect(failedDetail).toBeTruthy();
+    expect(failedDetail!.levelName).toBe('坏关卡');
+    expect(failedDetail!.failureReason).toBe('缺少必要字段');
+  });
+
+  it('全部失败的关卡包：不进入预览，直接记入历史', () => {
+    const failedDetails = [
+      { levelId: 'bad-1', levelName: '坏1', outcome: 'failed' as const, failureReason: '缺少起点' },
+      { levelId: 'bad-2', levelName: '坏2', outcome: 'failed' as const, failureReason: '缺少终点' },
+    ];
+
+    useGameStore.setState({
+      pendingAllImportedLevels: [],
+      pendingFailedItems: [],
+    });
+
+    const record: ImportRecord = {
+      id: 'all-fail-1',
+      fileName: 'all-bad.json',
+      fileSize: 512,
+      fileHash: 'badhash123',
+      timestamp: Date.now(),
+      newCount: 0,
+      overwrittenCount: 0,
+      duplicatedCount: 0,
+      skippedCount: 0,
+      failedCount: 2,
+      failureReasons: ['缺少起点', '缺少终点'],
+      levelDetails: failedDetails,
+    };
+
+    useGameStore.getState().addImportRecord(record);
+
+    const history = useGameStore.getState().importHistory;
+    expect(history.length).toBe(1);
+    expect(history[0].failedCount).toBe(2);
+    expect(history[0].levelDetails.length).toBe(2);
+    expect(history[0].levelDetails[0].outcome).toBe('failed');
+    expect(history[0].levelDetails[1].failureReason).toBe('缺少终点');
+  });
+
+  it('resolveImportConflicts 正确合并 failedItems 到 levelDetails', () => {
+    const newLv = makeLevel({ id: 'new-1', name: '新关卡' });
+    const conflictLv = makeLevel({ id: 'exist-1', name: '已有' });
+    const failedItems = [
+      { levelData: {}, levelName: '坏关卡', levelId: 'bad-1', reason: '格式错误' },
+    ];
+
+    useGameStore.setState({
+      customLevels: [makeLevel({ id: 'exist-1', name: '已有' })],
+      pendingAllImportedLevels: [newLv, conflictLv],
+      pendingFailedItems: failedItems,
+      pendingConflicts: [
+        { incomingLevel: conflictLv, existingLevel: makeLevel({ id: 'exist-1', name: '已有' }), conflictType: 'both' },
+      ],
+      pendingImportFileName: 'mixed-all.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = { fileSize: 1024, fileHash: 'mixhash' };
+
+    const resolutions = new Map<string, ConflictResolution>();
+    resolutions.set('exist-1', 'overwrite');
+
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(2);
+    expect(result.overwritten.length).toBe(1);
+
+    const history = useGameStore.getState().importHistory[0];
+    expect(history.levelDetails.length).toBe(3);
+    expect(history.failedCount).toBe(1);
+    expect(history.newCount).toBe(1);
+    expect(history.overwrittenCount).toBe(1);
+
+    const outcomes = new Set(history.levelDetails.map(d => d.outcome));
+    expect(outcomes.has('new')).toBe(true);
+    expect(outcomes.has('overwritten')).toBe(true);
+    expect(outcomes.has('failed')).toBe(true);
+  });
+
+  it('cancelPendingConflicts 清理 pendingFailedItems', () => {
+    useGameStore.setState({
+      pendingAllImportedLevels: [makeLevel({ id: 'temp' })],
+      pendingFailedItems: [{ levelData: {}, levelName: '坏', levelId: 'bad', reason: '错' }],
+      pendingConflicts: [],
+      pendingImportFileName: 'cancel-me.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = { fileSize: 123 };
+
+    useGameStore.getState().cancelPendingConflicts();
+
+    expect(useGameStore.getState().pendingAllImportedLevels.length).toBe(0);
+    expect(useGameStore.getState().pendingFailedItems.length).toBe(0);
+    expect(useGameStore.getState().pendingImportFileName).toBe('');
+    expect((useGameStore.getState() as any)._pendingFileMeta).toBeNull();
+  });
+
+  it('reExportImportResult 能找到并导出导入的关卡', () => {
+    const mockClick = vi.fn();
+    const mockAppendChild = vi.fn();
+    const mockRemoveChild = vi.fn();
+    const mockCreateElement = vi.fn(() => ({
+      href: '',
+      download: '',
+      click: mockClick,
+    }));
+    const mockCreateObjectURL = vi.fn(() => 'blob:test-url');
+    const mockRevokeObjectURL = vi.fn();
+
+    vi.stubGlobal('document', {
+      createElement: mockCreateElement,
+      body: {
+        appendChild: mockAppendChild,
+        removeChild: mockRemoveChild,
+      },
+    });
+    vi.stubGlobal('URL', {
+      createObjectURL: mockCreateObjectURL,
+      revokeObjectURL: mockRevokeObjectURL,
+    });
+
+    const lv1 = makeLevel({ id: 'reexp-1', name: '重导出1' });
+    const lv2 = makeLevel({ id: 'reexp-2', name: '重导出2' });
+    setCell(lv1.grid, { x: 2, y: 2 }, { type: 'wall', id: generateId() });
+    setCell(lv2.grid, { x: 3, y: 3 }, { type: 'key', color: 'red', id: generateId() });
+
+    useGameStore.setState({
+      customLevels: [lv1, lv2],
+      importHistory: [],
+    });
+
+    useGameStore.setState({
+      pendingAllImportedLevels: [lv1, lv2],
+      pendingFailedItems: [],
+      pendingConflicts: [],
+      pendingImportFileName: 'reexport-test.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = { fileSize: 2048, fileHash: 'reexp123' };
+
+    const resolutions = new Map<string, ConflictResolution>();
+    useGameStore.getState().resolveImportConflicts(resolutions);
+
+    const recordId = useGameStore.getState().importHistory[0].id;
+    const result = useGameStore.getState().reExportImportResult(recordId);
+    expect(result).toBe(true);
+    expect(mockCreateElement).toHaveBeenCalledWith('a');
+    expect(mockCreateObjectURL).toHaveBeenCalled();
+    expect(mockAppendChild).toHaveBeenCalled();
+    expect(mockClick).toHaveBeenCalled();
+    expect(mockRemoveChild).toHaveBeenCalled();
+    expect(mockRevokeObjectURL).toHaveBeenCalled();
+
+    vi.stubGlobal('document', undefined as any);
+    vi.stubGlobal('URL', undefined as any);
+  });
+
+  it('reExportImportResult 对不存在的记录返回 false', () => {
+    const result = useGameStore.getState().reExportImportResult('non-existent-id');
+    expect(result).toBe(false);
+  });
+
+  it('导出→再导入→再导出 完整链路验证', () => {
+    const originalLv = makeLevel({ id: 'roundtrip-1', name: '往返测试' });
+    setCell(originalLv.grid, { x: 4, y: 2 }, { type: 'door', color: 'blue', isOpen: false, id: generateId() });
+    setCell(originalLv.grid, { x: 3, y: 2 }, { type: 'key', color: 'blue', id: generateId() });
+
+    const pack = makePack([originalLv]);
+    const exportedJson = JSON.stringify(pack);
+
+    const parsed = parsePackContent(exportedJson);
+    expect(parsed.length).toBe(1);
+    expect(parsed[0].id).toBe('roundtrip-1');
+    expect(parsed[0].grid[2][3].element?.type).toBe('key');
+    expect(parsed[0].grid[2][4].element?.type).toBe('door');
+
+    useGameStore.setState({
+      customLevels: [],
+      pendingAllImportedLevels: parsed,
+      pendingFailedItems: [],
+      pendingConflicts: [],
+      pendingImportFileName: 'roundtrip.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = { fileSize: exportedJson.length, fileHash: 'roundtrip' };
+
+    const resolutions = new Map<string, ConflictResolution>();
+    useGameStore.getState().resolveImportConflicts(resolutions);
+
+    const imported = useGameStore.getState().customLevels[0];
+    expect(imported.id).toBe('roundtrip-1');
+    expect(imported.grid[2][3].element?.type).toBe('key');
+    expect(imported.grid[2][4].element?.type).toBe('door');
+
+    const repack = makePack([imported]);
+    const reExportedJson = JSON.stringify(repack);
+    const reparsed = parsePackContent(reExportedJson);
+    expect(reparsed[0].grid[2][3].element?.type).toBe('key');
+    expect(reparsed[0].grid[2][4].element?.type).toBe('door');
+  });
+
+  it('导入记录包含来源文件信息（文件名、大小、哈希）', () => {
+    const lv = makeLevel({ id: 'meta-1', name: '元数据测试' });
+
+    useGameStore.setState({
+      customLevels: [],
+      pendingAllImportedLevels: [lv],
+      pendingFailedItems: [],
+      pendingConflicts: [],
+      pendingImportFileName: 'meta-test.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = {
+      fileSize: 4096,
+      fileHash: 'abcdef1234567890',
+    };
+
+    const resolutions = new Map<string, ConflictResolution>();
+    useGameStore.getState().resolveImportConflicts(resolutions);
+
+    const record = useGameStore.getState().importHistory[0];
+    expect(record.fileName).toBe('meta-test.json');
+    expect(record.fileSize).toBe(4096);
+    expect(record.fileHash).toBe('abcdef1234567890');
+    expect(record.timestamp).toBeGreaterThan(0);
+  });
+
+  it('lastImportResult 指向最后一次导入结果', () => {
+    expect(useGameStore.getState().lastImportResult).toBeNull();
+
+    const lv = makeLevel({ id: 'last-1', name: '最后一次' });
+    useGameStore.setState({
+      pendingAllImportedLevels: [lv],
+      pendingFailedItems: [],
+      pendingConflicts: [],
+      pendingImportFileName: 'last.json',
+    });
+
+    const resolutions = new Map<string, ConflictResolution>();
+    useGameStore.getState().resolveImportConflicts(resolutions);
+
+    const last = useGameStore.getState().lastImportResult;
+    expect(last).not.toBeNull();
+    expect(last!.fileName).toBe('last.json');
+    expect(last!.newCount).toBe(1);
+  });
+
+  it('clearImportHistory 同时清空 lastImportResult', () => {
+    useGameStore.setState({
+      lastImportResult: {
+        id: 'temp',
+        fileName: 'temp.json',
+        timestamp: Date.now(),
+        newCount: 1,
+        overwrittenCount: 0,
+        duplicatedCount: 0,
+        skippedCount: 0,
+        failedCount: 0,
+        failureReasons: [],
+        levelDetails: [],
+      },
+    });
+
+    expect(useGameStore.getState().lastImportResult).not.toBeNull();
+    useGameStore.getState().clearImportHistory();
+    expect(useGameStore.getState().lastImportResult).toBeNull();
+  });
+});
+
+describe('新功能: 5种 outcome 完整预览（新增/覆盖/副本/跳过/失败）', () => {
+  beforeEach(() => {
+    ls.clear();
+    useGameStore.setState({
+      customLevels: [
+        makeLevel({ id: 'exist-a', name: '已有A' }),
+        makeLevel({ id: 'exist-b', name: '已有B' }),
+      ],
+      pendingConflicts: [],
+      pendingAllImportedLevels: [],
+      pendingFailedItems: [],
+      pendingImportFileName: '',
+      importHistory: [],
+      allDraftIds: [],
+      lastImportResult: null,
+    });
+  });
+
+  it('5种 outcome 同时出现：新增+覆盖+副本+跳过+失败', () => {
+    const newLv = makeLevel({ id: 'brand-new', name: '全新' });
+    const overLv = makeLevel({ id: 'exist-a', name: '覆盖A' });
+    const dupLv = makeLevel({ id: 'exist-b', name: '副本B原' });
+    const skipLv = makeLevel({ id: 'skip-c', name: '已有B' });
+    const failedItem = {
+      levelData: { id: 'bad' },
+      levelName: '坏关卡',
+      levelId: 'bad-xyz',
+      reason: '缺少起点和终点',
+    };
+
+    useGameStore.setState({
+      pendingAllImportedLevels: [newLv, overLv, dupLv, skipLv],
+      pendingFailedItems: [failedItem],
+      pendingConflicts: [
+        { incomingLevel: overLv, existingLevel: makeLevel({ id: 'exist-a', name: '已有A' }), conflictType: 'both' },
+        { incomingLevel: dupLv, existingLevel: makeLevel({ id: 'exist-b', name: '已有B' }), conflictType: 'id' },
+        { incomingLevel: skipLv, existingLevel: makeLevel({ id: 'exist-b', name: '已有B' }), conflictType: 'name' },
+      ],
+      pendingImportFileName: '5-outcomes.json',
+    });
+    (useGameStore.getState() as any)._pendingFileMeta = { fileSize: 9999, fileHash: '5outcomes' };
+
+    const resolutions = new Map<string, ConflictResolution>();
+    resolutions.set('exist-a', 'overwrite');
+    resolutions.set('exist-b', 'duplicate');
+    resolutions.set('skip-c', 'cancel');
+
+    const result = useGameStore.getState().resolveImportConflicts(resolutions);
+
+    expect(result.imported.length).toBe(3);
+    expect(result.overwritten.length).toBe(1);
+    expect(result.duplicated.length).toBe(1);
+    expect(result.skipped.length).toBe(1);
+
+    const history = useGameStore.getState().importHistory[0];
+    expect(history.levelDetails.length).toBe(5);
+    expect(history.newCount).toBe(1);
+    expect(history.overwrittenCount).toBe(1);
+    expect(history.duplicatedCount).toBe(1);
+    expect(history.skippedCount).toBe(1);
+    expect(history.failedCount).toBe(1);
+
+    const outcomes = history.levelDetails.map(d => d.outcome).sort();
+    expect(outcomes).toEqual(['duplicated', 'failed', 'new', 'overwritten', 'skipped']);
+
+    const failed = history.levelDetails.find(d => d.outcome === 'failed')!;
+    expect(failed.failureReason).toBe('缺少起点和终点');
+    expect(failed.levelName).toBe('坏关卡');
   });
 });

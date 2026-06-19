@@ -28,12 +28,15 @@
   - 📥 导入关卡包（带预览和冲突处理）
   - 📤 导出当前存档
 - **导入预览与冲突处理**：
-  - 📋 导入前预览：显示将新增、将覆盖、会另存副本、会跳过的关卡数量
+  - 📋 导入前预览：显示**5 种状态**数量：将新增、将覆盖、将另存副本、将跳过、**验证失败**（红色醒目显示）
   - ⚠️ 冲突逐条处理：每个冲突关卡可单独选覆盖/另存副本/跳过
   - 🔄 一键批量：全部覆盖、全部另存副本、全部跳过（按钮固定在顶部，滚动时始终可点）
   - ✅ 确认操作栏：底部固定确认导入/取消按钮，无论列表多长都可稳定点击（不被浮层遮挡）
+  - ❌ 失败项预览：验证失败的关卡在预览中单独列出，红色样式，显示具体失败原因
   - 📋 导入记录：记录文件名、时间、结果数量和失败原因，刷新后仍在
-  - 🔍 历史详情可展开：点击记录可查看**每个关卡**的处理结果（覆盖/副本/跳过/新增），失败项含原因
+  - 🔍 历史详情可展开：点击记录可查看**每个关卡**的处理结果（新增/覆盖/另存副本/跳过/失败），失败项含具体原因
+  - 📤 重新导出导入结果：每条导入记录旁有「📤 导出结果」按钮，可重新导出这次导入的所有成功关卡
+  - 🔁 导出→再导入完整链路：导出的导入结果文件可再次导入，形成闭环
   - 🆔 重复文件提醒：24 小时内重复导入同内容文件会提醒，避免误操作
   - 🔒 数据完整性：文件哈希和大小记入记录，便于追溯导入源头
 - **错误处理**：
@@ -274,16 +277,24 @@ npx vitest run
 
 ### 导入/导出验证路径
 
-测试文件 `src/__tests__/import-export-validation.test.ts` 覆盖以下场景（共 78 条测试全部通过）：
+测试文件 `src/__tests__/import-export-validation.test.ts` 覆盖以下场景（共 90 条测试全部通过）：
 
 | 场景分类 | 验证内容 |
 |---------|---------|
 | 导出→再导入 | 导出关卡包后重新解析，内容与原导出逐字段一致 |
 | 导出→再导入 | 导出关卡包 → 重新导入到空库，customLevels 数量一致 |
+| 导出→再导入完整链路 | 导出→导入→再导出→再导入，关卡数据完整无损（钥匙/门/机关/墙壁全部保留） |
 | 混合包（新增+冲突） | 1 个冲突选覆盖 + 1 个新增，最终数量不重复，列表 ID 唯一 |
 | 混合包（新增+冲突） | 冲突选另存副本 + 新增，列表无重复 ID |
 | 混合包（4 种 outcome） | 1 个新增 + 1 个覆盖 + 1 个另存副本 + 1 个跳过，4 种 outcome 明细齐全 |
+| 混合包（5 种 outcome） | 新增 + 覆盖 + 另存副本 + 跳过 + 失败，5 种 outcome 同时出现，明细齐全 |
+| 失败项处理 | importLevelPack 返回 ImportPackResult，包含 validLevels 和 failedItems |
+| 失败项处理 | 混合包（2有效+1失败）导入：预览显示失败项，确认后失败项记入历史 |
+| 失败项处理 | 全部失败的关卡包：记入历史，不进入预览 |
+| 失败项处理 | validateLevel 安全处理不完整数据（缺少 grid/startPos/endPos 等不抛出异常） |
+| 失败项处理 | resolveImportConflicts 正确合并 failedItems 到 levelDetails |
 | 取消导入 | cancelPendingConflicts 后，原数据一丝不改，pending 全部清空，临时文件元数据清理干净 |
+| 取消导入 | cancelPendingConflicts 同时清理 pendingFailedItems |
 | 取消导入 | 全部冲突选 cancel → 仅跳过冲突项，新增关卡仍被导入，customLevels 正确 |
 | 格式错误文件 | 非 JSON 内容 → JSON.parse 抛出语法错误 |
 | 格式错误文件 | JSON 但不是关卡包也不是关卡 → 抛出格式错误 |
@@ -296,10 +307,16 @@ npx vitest run
 | 导入记录持久化 | resolveImportConflicts 自动写入 importHistory，包含完整 levelDetails、文件哈希和大小 |
 | 导入记录持久化 | addImportRecord 追加记录并自动补 levelDetails 默认值，持久化正确 |
 | 导入记录持久化 | clearImportHistory 清空所有记录并同步 localStorage |
+| 导入记录持久化 | 导入记录包含完整来源文件信息（文件名、大小、哈希、时间戳） |
 | 详细导入记录（levelDetails） | 新增、覆盖、另存副本三种 outcome 明细字段齐全（冲突类型、原有关卡名、新关卡名/ID） |
 | 详细导入记录（levelDetails） | 跳过的冲突：outcome=skipped 记录冲突类型和原有关卡信息 |
 | 详细导入记录（levelDetails） | 文件级失败记录：outcome=failed 附带 failureReason |
 | 详细导入记录（levelDetails） | 混合包 4 种 outcome 齐全：new / overwritten / duplicated / skipped |
+| 详细导入记录（levelDetails） | 混合包 5 种 outcome 齐全：new / overwritten / duplicated / skipped / failed |
+| 重新导出导入结果 | reExportImportResult 能找到并导出导入的关卡 |
+| 重新导出导入结果 | reExportImportResult 对不存在的记录返回 false |
+| 重新导出导入结果 | lastImportResult 指向最后一次导入结果 |
+| 重新导出导入结果 | clearImportHistory 同时清空 lastImportResult |
 | cancel清理完整性 | 取消导入时 _pendingFileMeta 临时元数据被置空，不残留 |
 | 已有功能不受影响 | 导入后保存关卡，草稿被清除，customLevels 正确写入 |
 | 已有功能不受影响 | 编辑器撤销/重做在导入后仍然正常工作（snapshots 对应正确） |
@@ -429,12 +446,56 @@ npx vitest run
 4. **导入保存交叉**：导入一个含 1 个关卡的包 → 立即切到编辑模式保存另一个关卡 → 两者都出现在关卡列表，草稿机制正常 ✅
 5. 刷新页面后：导入记录、自定义关卡、草稿恢复（如之前有编辑未保存）全部正确恢复 ✅
 
+#### I. 失败项预览与 5 种 outcome 同时出现
+
+1. **准备测试文件**：在桌面新建 `5-outcomes.json`，内容是一个关卡包，包含：
+   - 1 个全新关卡（ID: `new-5`, 名：`全新关卡`）
+   - 1 个与已有A ID+名称都相同的关卡（内容不同）
+   - 1 个与已有B ID相同的关卡（名：`已有B`）
+   - 1 个名称与已有B相同的关卡（ID不同）
+   - 1 个无效对象 `{"id": "bad", "name": "坏关卡"}`（缺少 grid/startPos/endPos）
+2. 📥 导入 → 选择 `5-outcomes.json`
+3. **观察预览浮层**：
+   - ✅ 顶部统计显示 5 种状态：将新增 1、将覆盖 1、将另存副本 1、将跳过 1、**验证失败 1**（红色）
+   - ✅ 失败项在列表底部单独区域，红色背景，显示「❌ 坏关卡」和「原因: 缺少 grid 字段或格式错误」
+4. 逐条处理冲突：覆盖、另存副本、跳过
+5. 点 **确认导入(3)**
+6. 展开导入记录 → 展开本条：
+   - ✅ 共 5 条明细，outcome 分别为：new / overwritten / duplicated / skipped / failed
+   - ✅ failed 那条显示 `失败原因: 缺少 grid 字段或格式错误`
+7. 📂 选择关卡 → 自定义关卡数量正确，无重复
+
+#### J. 重新导出导入结果
+
+1. 完成步骤 I 后，在 📋 导入记录中找到刚才那条记录
+2. **观察**：每条记录行右侧有「📤 导出结果」按钮 ✅
+3. 点击「📤 导出结果」按钮
+4. **验证**：浏览器下载 JSON 文件，文件名形如 `import-result-5-outcomes-xxxxxx.json` ✅
+5. 打开下载的 JSON 文件，验证：
+   - ✅ 包含 `importedFrom` 字段，值为 `5-outcomes.json`
+   - ✅ 包含 `importDetails` 数组，有 5 条明细（与导入记录一致）
+   - ✅ `levels` 数组包含 3 个成功导入的关卡（新增+覆盖+副本）
+
+#### K. 导出→再导入完整链路
+
+1. 取步骤 J 中导出的 `import-result-5-outcomes-xxxxxx.json` 文件
+2. 清 localStorage 或开新标签页，确认无自定义关卡
+3. 📥 导入 → 选择刚才导出的文件
+4. **验证**：正常进入预览，显示 3 个将新增 ✅
+5. 确认导入，3 个关卡成功导入
+6. 逐个打开关卡，验证：
+   - ✅ 墙壁、钥匙、门、机关等元素位置正确
+   - ✅ 起点、终点位置正确
+   - ✅ 游玩验证能正常通关
+7. 在新的导入记录上再次点「📤 导出结果」
+8. 对比两次导出的 JSON 文件，关卡数据部分完全一致 ✅
+
 ### 自动化测试
 
 ```bash
 # 运行全部测试套件
 npx vitest run
-# 预期：Test Files 3 passed, Tests 78 passed
+# 预期：Test Files 3 passed, Tests 90 passed
 ```
 
 测试文件位置：

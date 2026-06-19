@@ -104,6 +104,20 @@ export interface ImportConflict {
   conflictType: 'id' | 'name' | 'both';
 }
 
+export interface ImportFailedItem {
+  levelData: unknown;
+  levelName: string;
+  levelId: string;
+  reason: string;
+}
+
+export interface ImportPreviewData {
+  validLevels: Level[];
+  failedItems: ImportFailedItem[];
+  conflicts: ImportConflict[];
+  fileName: string;
+}
+
 export interface ImportResult {
   imported: Level[];
   skipped: Level[];
