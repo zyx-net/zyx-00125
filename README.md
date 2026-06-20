@@ -606,13 +606,14 @@ npx vitest run
 ```bash
 # 运行全部测试套件
 npx vitest run
-# 预期：Test Files 4 passed, Tests 117 passed
+# 预期：Test Files 5 passed, Tests 156 passed
 ```
 
 测试文件位置：
 - 导入/导出/冲突/历史记录核心：[import-export-validation.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/import-export-validation.test.ts)
 - 草稿与冲突状态同步：[draft-and-conflicts.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/draft-and-conflicts.test.ts)
-- 状态同步测试：[state-sync.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/state-sync.test.ts)
+- **状态同步测试**：[state-sync.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/state-sync.test.ts)
+- **导入结果文件往返回归（24 条）**：[import-roundtrip.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/import-roundtrip.test.ts)
 - **解法回放核心（27 条）**：[replay.test.ts](file:///D:/workSpace/AI__SPACE/zyx-00125/src/__tests__/replay.test.ts)
 
 解法回放 27 条自动化测试覆盖：
@@ -630,6 +631,34 @@ npx vitest run
 | Store（控件） | step/back/jump/pause/resume/finish/speed 边界、过滤器不影响底层数据 |
 | Store（删除） | 删除正在播放的回放会先取消播放 |
 | Store（冲突解决） | 5 种 outcome（new/overwrite/duplicate/skip/failed）正确写入历史与存储、cancelPendingReplayConflicts 清理干净无残留 |
+
+导入结果文件往返回归 24 条自动化测试覆盖：
+| 分类 | 用例 |
+|-----|------|
+| 三字段契约 | exported JSON 必含 importedFrom / importDetails / levels，名字不变、层级不散 |
+| 三字段契约 | importedFrom 值回指来源文件名（含后缀） |
+| 三字段契约 | importDetails 每条明细含 levelId + outcome，可回溯到具体关卡和操作结果 |
+| 三字段契约 | levels 数组保留完整关卡层级和数据（grid 元素完好、validateLevel 通过） |
+| 三字段契约 | 5 种 outcome 的 importDetails 结构完整（new / overwritten / duplicated / skipped / failed） |
+| exportImportRecordAsJson 格式 | originalImport.fileName 等价 importedFrom 语义，levelDetails 等价 importDetails 语义 |
+| exportImportRecordAsJson 格式 | summary 统计与 levelDetails 的 outcome 计数一致 |
+| 完整链路 | 导出结果 JSON → 回导 → customLevels 与原始关卡一致（含 key/door/wall/mechanism） |
+| 完整链路 | 回导后查看历史摘要，摘要与导出文件 importDetails 一致 |
+| 完整链路 | 再复用一次：从回导后 store 再次导出→再导入，关卡数据不变 |
+| README J 节验收 | 5 种 outcome 混合导入后导出结果文件，三字段完整断言 |
+| README J 节验收 | 导出结果文件回导后关卡可游玩验证 |
+| README J 节验收 | 再次导出的结果文件与首次导出的关卡数据部分完全一致 |
+| 回导识别 | exportImportResult 格式 levels 数组被 importLevelPack 正确识别 |
+| 回导识别 | exportImportRecordAsJson 格式 levels 数组被 importLevelPack 正确识别 |
+| 层级不散 | 三字段均为顶层属性，不被嵌套到子对象 |
+| 层级不散 | importDetails 内每条明细层级一致，不出现深度嵌套 |
+| 摘要可回溯 | store reExportImportResult 收集的关卡 ID 与 levelDetails 中 new/overwritten/duplicated 一致 |
+| 摘要可回溯 | 覆盖场景：reExportImportResult 收集的关卡是覆盖后的版本 |
+| 摘要可回溯 | duplicate 场景：reExportImportResult 收集的是副本关卡（新 ID） |
+| 断言辅助 | assertImportResultFields：importedFrom 不匹配时抛出 |
+| 断言辅助 | assertImportResultFields：importDetails 长度不匹配时抛出 |
+| 断言辅助 | assertImportResultFields：levels ID 不匹配时抛出 |
+| 断言辅助 | assertImportResultFields：完全匹配时不抛出 |
 
 ---
 

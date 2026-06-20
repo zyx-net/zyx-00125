@@ -1,0 +1,313 @@
+{
+  "exportType": "import-result",
+  "exportVersion": "1.0",
+  "exportedAt": "2026-06-20T09:50:49.082Z",
+  "originalImport": {
+    "fileName": "reviewer-source.json",
+    "fileSize": 321,
+    "fileHash": "hash-reviewer-source.json",
+    "timestamp": 1781949049082
+  },
+  "summary": {
+    "newCount": 1,
+    "overwrittenCount": 0,
+    "duplicatedCount": 0,
+    "skippedCount": 0,
+    "failedCount": 0
+  },
+  "failureReasons": [],
+  "levelDetails": [
+    {
+      "levelId": "review-level-1",
+      "levelName": "Reviewer Level 1",
+      "outcome": "new",
+      "newLevelId": "review-level-1",
+      "newLevelName": "Reviewer Level 1"
+    }
+  ],
+  "levels": [
+    {
+      "id": "review-level-1",
+      "name": "Reviewer Level 1",
+      "width": 8,
+      "height": 6,
+      "grid": [
+        [
+          {
+            "x": 0,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 2,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 4,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 5,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 0,
+            "element": null
+          },
+          {
+            "x": 7,
+            "y": 0,
+            "element": null
+          }
+        ],
+        [
+          {
+            "x": 0,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 1,
+            "element": {
+              "type": "start",
+              "id": "qrr8j8m"
+            }
+          },
+          {
+            "x": 2,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 4,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 5,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 1,
+            "element": null
+          },
+          {
+            "x": 7,
+            "y": 1,
+            "element": null
+          }
+        ],
+        [
+          {
+            "x": 0,
+            "y": 2,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 2,
+            "element": null
+          },
+          {
+            "x": 2,
+            "y": 2,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 2,
+            "element": {
+              "type": "key",
+              "color": "green",
+              "id": "aspt7v5"
+            }
+          },
+          {
+            "x": 4,
+            "y": 2,
+            "element": {
+              "type": "door",
+              "color": "green",
+              "isOpen": false,
+              "id": "0jqhrzg"
+            }
+          },
+          {
+            "x": 5,
+            "y": 2,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 2,
+            "element": null
+          },
+          {
+            "x": 7,
+            "y": 2,
+            "element": null
+          }
+        ],
+        [
+          {
+            "x": 0,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 2,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 4,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 5,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 3,
+            "element": null
+          },
+          {
+            "x": 7,
+            "y": 3,
+            "element": null
+          }
+        ],
+        [
+          {
+            "x": 0,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 2,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 4,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 5,
+            "y": 4,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 4,
+            "element": {
+              "type": "end",
+              "id": "x6jzbo3"
+            }
+          },
+          {
+            "x": 7,
+            "y": 4,
+            "element": null
+          }
+        ],
+        [
+          {
+            "x": 0,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 1,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 2,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 3,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 4,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 5,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 6,
+            "y": 5,
+            "element": null
+          },
+          {
+            "x": 7,
+            "y": 5,
+            "element": null
+          }
+        ]
+      ],
+      "startPos": {
+        "x": 1,
+        "y": 1
+      },
+      "endPos": {
+        "x": 6,
+        "y": 4
+      }
+    }
+  ]
+}
