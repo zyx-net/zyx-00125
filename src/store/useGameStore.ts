@@ -97,8 +97,10 @@ import {
 } from '../utils/export';
 import {
   buildReplayRecord,
+  canSaveReplay,
   checkReplayCompatibility,
   getReplayStateAtStep,
+  sanitizeReplays,
   cloneGameState as replayCloneGameState,
 } from '../game/replay';
 
@@ -272,7 +274,7 @@ export const useGameStore = create<GameStore>((set, get) => {
     importHistory: loadImportHistory(),
     lastImportResult: null,
 
-    replays: loadReplays(),
+    replays: sanitizeReplays(loadReplays()),
     playbackState: {
       replayId: null,
       status: 'idle',
@@ -1349,12 +1351,10 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     saveReplay: (name: string) => {
-      const { gameState, actionHistory, historyIndex, currentLevel, replays, mode } = get();
-      if (mode !== 'play') {
-        return { success: false, message: '❌ 编辑模式下不能保存回放' };
-      }
-      if (actionHistory.length < 2) {
-        return { success: false, message: '❌ 行动步骤太少，无法保存回放' };
+      const { gameState, actionHistory, historyIndex, mode, currentLevel, replays } = get();
+      const check = canSaveReplay(gameState, actionHistory, mode);
+      if (!check.allowed) {
+        return { success: false, message: `❌ ${check.reason!}` };
       }
       if (!name.trim()) {
         return { success: false, message: '❌ 请输入回放名称' };

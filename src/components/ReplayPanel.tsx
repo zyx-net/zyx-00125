@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import type { ReplayRecord } from '../types/game';
 import { sampleLevels } from '../data/sampleLevels';
+import { canSaveReplay } from '../game/replay';
 
 export const ReplayPanel: React.FC = () => {
   const {
@@ -30,6 +31,7 @@ export const ReplayPanel: React.FC = () => {
     importReplays,
     saveReplay,
     gameState,
+    actionHistory,
   } = useGameStore();
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -115,7 +117,10 @@ export const ReplayPanel: React.FC = () => {
     }
   };
 
-  const canSaveReplay = gameState.isWin || (replays.length === 0 && currentLevel.id);
+  const saveReplayCheck = useMemo(
+    () => canSaveReplay(gameState, actionHistory, mode),
+    [gameState, actionHistory, mode],
+  );
 
   return (
     <div className="bg-gray-900/80 backdrop-blur-sm rounded-xl border border-gray-700 p-4 shadow-xl flex flex-col h-full">
@@ -124,7 +129,7 @@ export const ReplayPanel: React.FC = () => {
         <div className="flex gap-1">
           <button
             className={`px-2 py-1 rounded-lg text-xs transition-all ${
-              canSaveReplay
+              saveReplayCheck.allowed
                 ? 'bg-purple-900/50 hover:bg-purple-800/50 border border-purple-700/50 text-purple-200'
                 : 'bg-gray-800/50 text-gray-500 cursor-not-allowed'
             }`}
@@ -132,8 +137,8 @@ export const ReplayPanel: React.FC = () => {
               setSaveName(`${currentLevel.name}-${new Date().toLocaleDateString()}`);
               setShowSaveDialog(true);
             }}
-            disabled={!canSaveReplay}
-            title={!canSaveReplay ? '通关后可保存当前解法' : '保存当前行动历史为回放'}
+            disabled={!saveReplayCheck.allowed}
+            title={!saveReplayCheck.allowed ? saveReplayCheck.reason : '保存当前行动历史为回放'}
           >
             💾 保存
           </button>
@@ -300,7 +305,7 @@ export const ReplayPanel: React.FC = () => {
         {filteredReplays.length === 0 ? (
           <div className="text-center text-gray-500 text-sm py-8">
             {replays.length === 0
-              ? '暂无回放记录\n通关后可保存解法'
+              ? '暂无回放记录\n通关后才能保存攻略记录'
               : '当前关卡下没有回放记录'}
           </div>
         ) : (
@@ -466,7 +471,7 @@ export const ReplayPanel: React.FC = () => {
             />
             <div className="text-xs text-gray-400 mb-4 space-y-1">
               <p>📂 关卡：{currentLevel.name}</p>
-              <p>📊 步数：{Math.max(0, useGameStore.getState().actionHistory.length - 1)}</p>
+              <p>📊 步数：{Math.max(0, actionHistory.length - 1)}</p>
               <p>🎯 结果：{gameState.isWin ? '✅ 已通关' : '⏳ 未通关'}</p>
             </div>
             <div className="flex gap-2 justify-end">

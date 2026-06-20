@@ -16,10 +16,12 @@ import {
 } from '../game/grid';
 import {
   buildReplayRecord,
+  canSaveReplay,
   checkReplayCompatibility,
   computeLevelDigest,
   extractKeySteps,
   getReplayStateAtStep,
+  sanitizeReplays,
   validateReplayRecord,
   validateReplayPack,
   computeGridHash,
@@ -459,11 +461,11 @@ describe('Store：回放保存、播放、取消回滚、套用、导入冲突�
     const initial = createInitialGameState(lv);
     const actions: Action[] = [
       makeAction(initial, 'move', 'right', '初始'),
-      makeAction({ ...initial, turn: 1 }, 'move', 'down', '第2步'),
+      makeAction({ ...initial, turn: 1, isWin: true }, 'move', 'down', '第2步'),
     ];
     actions[1].stateSnapshot.isWin = true;
     useGameStore.setState({
-      gameState: initial,
+      gameState: { ...initial, isWin: true },
       actionHistory: actions,
       historyIndex: 1,
       mode: 'play',
@@ -755,5 +757,194 @@ describe('Store：回放保存、播放、取消回滚、套用、导入冲突�
     expect(useGameStore.getState().pendingReplayImportFileName).toBe('');
     expect((useGameStore.getState() as any)._pendingReplayFileMeta).toBeNull();
     expect(useGameStore.getState().replays).toHaveLength(1);
+  });
+});
+
+describe('canSaveReplay 统一判断函数', () => {
+  const lv = makeLevel({ id: 'can-save-lv' });
+  const initial = createInitialGameState(lv);
+  const actions: Action[] = [
+    makeAction(initial, 'move', 'right', '初始'),
+    makeAction({ ...initial, turn: 1 }, 'move', 'down', '第2步'),
+  ];
+
+  it('编辑模式拒绝保存，reason 包含"编辑"', () => {
+    const r = canSaveReplay(initial, actions, 'edit');
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toContain('编辑');
+  });
+
+  it('行动步骤不足拒绝保存，reason 包含"步骤"', () => {
+    const r = canSaveReplay(initial, [], 'play');
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toContain('步骤');
+  });
+
+  it('未通关拒绝保存，reason 包含"通关"', () => {
+    const notWin = { ...initial, isWin: false };
+    const r = canSaveReplay(notWin, actions, 'play');
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toContain('通关');
+  });
+
+  it('通关后允许保存', () => {
+    const win = { ...initial, isWin: true };
+    const r = canSaveReplay(win, actions, 'play');
+    expect(r.allowed).toBe(true);
+    expect(r.reason).toBeUndefined();
+  });
+});
+
+describe('validateReplayRecord 拒绝非通关记录', () => {
+  it('isWin=false 的记录校验失败，reason 包含"通关"', () => {
+    const lv = makeLevel({ id: 'val-nowin' });
+    const replay = buildWinReplay(lv);
+    const fakeNonWin = { ...replay, isWin: false };
+    const r = validateReplayRecord(fakeNonWin);
+    expect(r.valid).toBe(false);
+    expect(r.reason).toContain('通关');
+  });
+
+  it('isWin=true 的记录校验通过', () => {
+    const lv = makeLevel({ id: 'val-win' });
+    const replay = buildWinReplay(lv);
+    expect(validateReplayRecord(replay).valid).toBe(true);
+  });
+
+  it('validateReplayPack 过滤掉 isWin=false 的记录', () => {
+    const lv = makeLevel({ id: 'pack-nowin' });
+    const winReplay = buildWinReplay(lv);
+    const nonWinReplay = { ...buildWinReplay(lv), isWin: false };
+    const result = validateReplayPack([winReplay, nonWinReplay]);
+    expect(result.replays).toHaveLength(1);
+    expect(result.failedItems).toHaveLength(1);
+    expect(result.failedItems[0].reason).toContain('通关');
+  });
+});
+
+describe('sanitizeReplays 清洗函数', () => {
+  it('过滤掉 isWin=false 的记录，只保留通关记录', () => {
+    const lv = makeLevel({ id: 'sanitize-lv' });
+    const win = buildWinReplay(lv);
+    const nonWin = { ...buildWinReplay(lv), isWin: false };
+    const result = sanitizeReplays([win, nonWin, win]);
+    expect(result).toHaveLength(2);
+    expect(result.every(r => r.isWin === true)).toBe(true);
+  });
+
+  it('空数组返回空数组', () => {
+    expect(sanitizeReplays([])).toEqual([]);
+  });
+
+  it('全部 isWin=true 时不丢弃任何记录', () => {
+    const lv = makeLevel({ id: 'sanitize-all' });
+    const replays = [buildWinReplay(lv), buildWinReplay(lv)];
+    expect(sanitizeReplays(replays)).toHaveLength(2);
+  });
+});
+
+describe('Store：saveReplay 未通关拦截', () => {
+  beforeEach(() => {
+    useGameStore.setState(useGameStore.getInitialState());
+  });
+
+  it('未通关时 saveReplay 拒绝保存，replays 不增加', () => {
+    const lv = makeLevel({ id: 'nowin-store' });
+    const initial = createInitialGameState(lv);
+    const actions: Action[] = [
+      makeAction(initial, 'move', 'right', '初始'),
+      makeAction({ ...initial, turn: 1 }, 'move', 'down', '第2步'),
+    ];
+    useGameStore.setState({
+      currentLevel: lv,
+      gameState: { ...initial, isWin: false },
+      actionHistory: actions,
+      historyIndex: 1,
+      mode: 'play',
+    });
+    const result = useGameStore.getState().saveReplay('未通关');
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('通关');
+    expect(useGameStore.getState().replays).toHaveLength(0);
+    expect(loadReplays()).toHaveLength(0);
+  });
+
+  it('通关后 saveReplay 正常保存', () => {
+    const lv = makeLevel({ id: 'win-store' });
+    const initial = createInitialGameState(lv);
+    const actions: Action[] = [
+      makeAction(initial, 'move', 'right', '初始'),
+      makeAction({ ...initial, turn: 1, isWin: true }, 'move', 'down', '第2步'),
+    ];
+    actions[1].stateSnapshot.isWin = true;
+    useGameStore.setState({
+      currentLevel: lv,
+      gameState: { ...initial, isWin: true },
+      actionHistory: actions,
+      historyIndex: 1,
+      mode: 'play',
+    });
+    const result = useGameStore.getState().saveReplay('通关了');
+    expect(result.success).toBe(true);
+    expect(useGameStore.getState().replays).toHaveLength(1);
+    expect(useGameStore.getState().replays[0].isWin).toBe(true);
+  });
+
+  it('store 初始化时自动清洗 localStorage 中的非法记录', () => {
+    const lv = makeLevel({ id: 'dirty-lv' });
+    const win = buildWinReplay(lv);
+    const nonWin = { ...buildWinReplay(lv), isWin: false };
+    saveReplays([win, nonWin]);
+    expect(loadReplays()).toHaveLength(2);
+
+    const cleaned = sanitizeReplays(loadReplays());
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].isWin).toBe(true);
+  });
+});
+
+describe('刷新/重开后展示一致', () => {
+  beforeEach(() => {
+    useGameStore.setState(useGameStore.getInitialState());
+  });
+
+  it('保存通关回放后 loadReplays 与 store 中 replays 一致', () => {
+    const lv = makeLevel({ id: 'persist-consistent' });
+    const initial = createInitialGameState(lv);
+    const actions: Action[] = [
+      makeAction(initial, 'move', 'right', '初始'),
+      makeAction({ ...initial, turn: 1, isWin: true }, 'move', 'down', '第2步'),
+    ];
+    actions[1].stateSnapshot.isWin = true;
+    useGameStore.setState({
+      currentLevel: lv,
+      gameState: { ...initial, isWin: true },
+      actionHistory: actions,
+      historyIndex: 1,
+      mode: 'play',
+    });
+    useGameStore.getState().saveReplay('持久化测试');
+
+    const fromStore = useGameStore.getState().replays;
+    const fromStorage = loadReplays();
+    expect(fromStore).toHaveLength(1);
+    expect(fromStorage).toHaveLength(1);
+    expect(fromStore[0].id).toBe(fromStorage[0].id);
+    expect(fromStore[0].isWin).toBe(true);
+    expect(fromStorage[0].isWin).toBe(true);
+  });
+
+  it('sanitizeReplays + loadReplays 确保旧非法数据在应用层被过滤', () => {
+    const lv = makeLevel({ id: 'migration-lv' });
+    const win = buildWinReplay(lv);
+    const nonWin = { ...buildWinReplay(lv), isWin: false };
+    saveReplays([win, nonWin]);
+
+    const raw = loadReplays();
+    expect(raw).toHaveLength(2);
+
+    const cleaned = sanitizeReplays(raw);
+    expect(cleaned).toHaveLength(1);
+    expect(cleaned[0].isWin).toBe(true);
   });
 });

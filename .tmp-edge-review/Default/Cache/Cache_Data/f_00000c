@@ -1,0 +1,250 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/components/HistoryPanel.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=595bd1ce"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+var _s = $RefreshSig$();
+import __vite__cjsImport3_react from "/node_modules/.vite/deps/react.js?v=595bd1ce"; const useEffect = __vite__cjsImport3_react["useEffect"]; const useRef = __vite__cjsImport3_react["useRef"];
+import { useGameStore } from "/src/store/useGameStore.ts";
+import { canUndo, canRedo } from "/src/game/history.ts";
+export const HistoryPanel = () => {
+  _s();
+  const {
+    actionHistory,
+    historyIndex,
+    mode,
+    undo,
+    redo,
+    resetLevel,
+    playbackState
+  } = useGameStore();
+  const isPlaybackActive = playbackState.status !== "idle";
+  const scrollRef = useRef(null);
+  const currentHistory = { actions: actionHistory, currentIndex: historyIndex };
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [actionHistory.length, historyIndex]);
+  if (mode === "edit") {
+    return null;
+  }
+  return /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "32", "trae-inspector-start-column": "4", "trae-inspector-end-line": "116", "trae-inspector-end-column": "10", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "bg-gray-900/80 backdrop-blur-sm rounded-xl border border-gray-700 p-4 shadow-xl flex flex-col h-full", children: [
+    /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "33", "trae-inspector-start-column": "6", "trae-inspector-end-line": "61", "trae-inspector-end-column": "12", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "flex justify-between items-center mb-3", children: [
+      /* @__PURE__ */ jsxDEV("h3", { "trae-inspector-start-line": "34", "trae-inspector-start-column": "8", "trae-inspector-end-line": "34", "trae-inspector-end-column": "68", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22text%22%3A%22%F0%9F%93%9C%20%E8%A1%8C%E5%8A%A8%E5%8E%86%E5%8F%B2%22%2C%22textStartLine%22%3A%2234%22%2C%22textStartColumn%22%3A%2256%22%2C%22textEndLine%22%3A%2234%22%2C%22textEndColumn%22%3A%2263%22%2C%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "text-lg font-bold text-cyan-400", children: "📜 行动历史" }, void 0, false, {
+        fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+        lineNumber: 53,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "35", "trae-inspector-start-column": "8", "trae-inspector-end-line": "60", "trae-inspector-end-column": "14", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "flex gap-1", children: [
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            "trae-inspector-start-line": "36",
+            "trae-inspector-start-column": "10",
+            "trae-inspector-end-line": "47",
+            "trae-inspector-end-column": "19",
+            "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx",
+            "trae-inspector-static-props": "%7B%22text%22%3A%22%E2%86%A9%EF%B8%8F%20%E6%92%A4%E9%94%80%22%2C%22textStartLine%22%3A%2245%22%2C%22textStartColumn%22%3A%2211%22%2C%22textEndLine%22%3A%2247%22%2C%22textEndColumn%22%3A%2210%22%2C%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D",
+            className: `px-3 py-1.5 rounded-lg text-sm transition-all ${!isPlaybackActive && canUndo(currentHistory) ? "bg-gray-800 hover:bg-gray-700 active:scale-95" : "bg-gray-800/50 text-gray-500 cursor-not-allowed"}`,
+            onClick: undo,
+            disabled: isPlaybackActive || !canUndo(currentHistory),
+            title: isPlaybackActive ? "回放进行中" : "撤销 (Ctrl+Z)",
+            children: "↩️ 撤销"
+          },
+          void 0,
+          false,
+          {
+            fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+            lineNumber: 55,
+            columnNumber: 11
+          },
+          this
+        ),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            "trae-inspector-start-line": "48",
+            "trae-inspector-start-column": "10",
+            "trae-inspector-end-line": "59",
+            "trae-inspector-end-column": "19",
+            "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx",
+            "trae-inspector-static-props": "%7B%22text%22%3A%22%E2%86%AA%EF%B8%8F%20%E9%87%8D%E5%81%9A%22%2C%22textStartLine%22%3A%2257%22%2C%22textStartColumn%22%3A%2211%22%2C%22textEndLine%22%3A%2259%22%2C%22textEndColumn%22%3A%2210%22%2C%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D",
+            className: `px-3 py-1.5 rounded-lg text-sm transition-all ${!isPlaybackActive && canRedo(currentHistory) ? "bg-gray-800 hover:bg-gray-700 active:scale-95" : "bg-gray-800/50 text-gray-500 cursor-not-allowed"}`,
+            onClick: redo,
+            disabled: isPlaybackActive || !canRedo(currentHistory),
+            title: isPlaybackActive ? "回放进行中" : "重做 (Ctrl+Y)",
+            children: "↪️ 重做"
+          },
+          void 0,
+          false,
+          {
+            fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+            lineNumber: 67,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+        lineNumber: 54,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+      lineNumber: 52,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV(
+      "div",
+      {
+        "trae-inspector-start-line": "63",
+        "trae-inspector-start-column": "6",
+        "trae-inspector-end-line": "97",
+        "trae-inspector-end-column": "12",
+        "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx",
+        "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D",
+        ref: scrollRef,
+        className: "flex-1 overflow-y-auto space-y-1 max-h-64 pr-1 custom-scrollbar",
+        children: actionHistory.length === 0 ? /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "68", "trae-inspector-start-column": "10", "trae-inspector-end-line": "70", "trae-inspector-end-column": "16", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22text%22%3A%22%E6%9A%82%E6%97%A0%E8%A1%8C%E5%8A%A8%E8%AE%B0%E5%BD%95%22%2C%22textStartLine%22%3A%2268%22%2C%22textStartColumn%22%3A%2266%22%2C%22textEndLine%22%3A%2270%22%2C%22textEndColumn%22%3A%2210%22%2C%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "text-center text-gray-500 text-sm py-8", children: "暂无行动记录" }, void 0, false, {
+          fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+          lineNumber: 87,
+          columnNumber: 9
+        }, this) : actionHistory.map(
+          (action, index) => /* @__PURE__ */ jsxDEV(
+            "div",
+            {
+              "trae-inspector-start-line": "73",
+              "trae-inspector-start-column": "12",
+              "trae-inspector-end-line": "94",
+              "trae-inspector-end-column": "18",
+              "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx",
+              "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D",
+              className: `text-xs px-2 py-1.5 rounded-lg transition-all ${index === historyIndex ? "bg-cyan-900/50 border border-cyan-500/50 text-cyan-300" : index < historyIndex ? "bg-gray-800/30 text-gray-400" : "bg-gray-800/10 text-gray-600"}`,
+              children: /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "83", "trae-inspector-start-column": "14", "trae-inspector-end-line": "93", "trae-inspector-end-column": "20", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "flex justify-between items-center", children: [
+                /* @__PURE__ */ jsxDEV("span", { "trae-inspector-start-line": "84", "trae-inspector-start-column": "16", "trae-inspector-end-line": "86", "trae-inspector-end-column": "23", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "font-mono", children: String(index).padStart(2, "0") }, void 0, false, {
+                  fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+                  lineNumber: 103,
+                  columnNumber: 17
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { "trae-inspector-start-line": "87", "trae-inspector-start-column": "16", "trae-inspector-end-line": "89", "trae-inspector-end-column": "23", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "flex-1 mx-2 truncate", children: action.description }, void 0, false, {
+                  fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+                  lineNumber: 106,
+                  columnNumber: 17
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { "trae-inspector-start-line": "90", "trae-inspector-start-column": "16", "trae-inspector-end-line": "92", "trae-inspector-end-column": "23", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "text-gray-500 font-mono text-[10px]", children: [
+                  "(",
+                  action.position.x,
+                  ",",
+                  action.position.y,
+                  ")"
+                ] }, void 0, true, {
+                  fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+                  lineNumber: 109,
+                  columnNumber: 17
+                }, this)
+              ] }, void 0, true, {
+                fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+                lineNumber: 102,
+                columnNumber: 15
+              }, this)
+            },
+            action.id,
+            false,
+            {
+              fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+              lineNumber: 92,
+              columnNumber: 9
+            },
+            this
+          )
+        )
+      },
+      void 0,
+      false,
+      {
+        fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+        lineNumber: 82,
+        columnNumber: 7
+      },
+      this
+    ),
+    /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "99", "trae-inspector-start-column": "6", "trae-inspector-end-line": "115", "trae-inspector-end-column": "12", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "mt-3 pt-3 border-t border-gray-700 flex gap-2", children: [
+      /* @__PURE__ */ jsxDEV("div", { "trae-inspector-start-line": "100", "trae-inspector-start-column": "8", "trae-inspector-end-line": "102", "trae-inspector-end-column": "14", "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx", "trae-inspector-static-props": "%7B%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D", className: "flex-1 text-xs text-gray-400", children: [
+        "当前: ",
+        historyIndex + 1,
+        " / ",
+        actionHistory.length
+      ] }, void 0, true, {
+        fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+        lineNumber: 119,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          "trae-inspector-start-line": "103",
+          "trae-inspector-start-column": "8",
+          "trae-inspector-end-line": "114",
+          "trae-inspector-end-column": "17",
+          "trae-inspector-file-path": "src\\\\components\\\\HistoryPanel.tsx",
+          "trae-inspector-static-props": "%7B%22text%22%3A%22%F0%9F%94%84%20%E9%87%8D%E7%BD%AE%22%2C%22textStartLine%22%3A%22112%22%2C%22textStartColumn%22%3A%229%22%2C%22textEndLine%22%3A%22114%22%2C%22textEndColumn%22%3A%228%22%2C%22cwd%22%3A%22D%3A%5C%5CworkSpace%5C%5CAI__SPACE%5C%5Czyx-00125%22%7D",
+          className: `px-3 py-1 rounded-lg text-xs transition-all ${isPlaybackActive ? "bg-gray-700/50 text-gray-500 border border-gray-600 cursor-not-allowed" : "bg-red-900/50 hover:bg-red-800/50 border border-red-700"}`,
+          onClick: resetLevel,
+          disabled: isPlaybackActive,
+          title: isPlaybackActive ? "回放进行中" : "重置关卡",
+          children: "🔄 重置"
+        },
+        void 0,
+        false,
+        {
+          fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+          lineNumber: 122,
+          columnNumber: 9
+        },
+        this
+      )
+    ] }, void 0, true, {
+      fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+      lineNumber: 118,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx",
+    lineNumber: 51,
+    columnNumber: 5
+  }, this);
+};
+_s(HistoryPanel, "vV5aX108NK71u9A0jz8cXax8Av8=", false, function() {
+  return [useGameStore];
+});
+_c = HistoryPanel;
+var _c;
+$RefreshReg$(_c, "HistoryPanel");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("D:/workSpace/AI__SPACE/zyx-00125/src/components/HistoryPanel.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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bkZGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0FvRkE7QUFFSjtBQUFFUixHQWpIV0QsY0FBc0I7QUFBQSxVQVM3QkgsWUFBWTtBQUFBO0FBQUEsS0FUTEc7QUFBc0IsSUFBQTZCO0FBQUEsYUFBQUEsSUFBQSIsIm5hbWVzIjpbInVzZUVmZmVjdCIsInVzZVJlZiIsInVzZUdhbWVTdG9yZSIsImNhblVuZG8iLCJjYW5SZWRvIiwiSGlzdG9yeVBhbmVsIiwiX3MiLCJhY3Rpb25IaXN0b3J5IiwiaGlzdG9yeUluZGV4IiwibW9kZSIsInVuZG8iLCJyZWRvIiwicmVzZXRMZXZlbCIsInBsYXliYWNrU3RhdGUiLCJpc1BsYXliYWNrQWN0aXZlIiwic3RhdHVzIiwic2Nyb2xsUmVmIiwiY3VycmVudEhpc3RvcnkiLCJhY3Rpb25zIiwiY3VycmVudEluZGV4IiwiY3VycmVudCIsInNjcm9sbFRvcCIsInNjcm9sbEhlaWdodCIsImxlbmd0aCIsIm1hcCIsImFjdGlvbiIsImluZGV4IiwiU3RyaW5nIiwicGFkU3RhcnQiLCJkZXNjcmlwdGlvbiIsInBvc2l0aW9uIiwieCIsInkiLCJpZCIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkhpc3RvcnlQYW5lbC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IFJlYWN0LCB7IHVzZUVmZmVjdCwgdXNlUmVmIH0gZnJvbSAncmVhY3QnO1xyXG5pbXBvcnQgeyB1c2VHYW1lU3RvcmUgfSBmcm9tICcuLi9zdG9yZS91c2VHYW1lU3RvcmUnO1xyXG5pbXBvcnQgeyBjYW5VbmRvLCBjYW5SZWRvIH0gZnJvbSAnLi4vZ2FtZS9oaXN0b3J5JztcclxuXHJcbmV4cG9ydCBjb25zdCBIaXN0b3J5UGFuZWw6IFJlYWN0LkZDID0gKCkgPT4ge1xyXG4gIGNvbnN0IHtcclxuICAgIGFjdGlvbkhpc3RvcnksXHJcbiAgICBoaXN0b3J5SW5kZXgsXHJcbiAgICBtb2RlLFxyXG4gICAgdW5kbyxcclxuICAgIHJlZG8sXHJcbiAgICByZXNldExldmVsLFxyXG4gICAgcGxheWJhY2tTdGF0ZSxcclxuICB9ID0gdXNlR2FtZVN0b3JlKCk7XHJcblxyXG4gIGNvbnN0IGlzUGxheWJhY2tBY3RpdmUgPSBwbGF5YmFja1N0YXRlLnN0YXR1cyAhPT0gJ2lkbGUnO1xyXG5cclxuICBjb25zdCBzY3JvbGxSZWYgPSB1c2VSZWY8SFRNTERpdkVsZW1lbnQ+KG51bGwpO1xyXG4gIGNvbnN0IGN1cnJlbnRIaXN0b3J5ID0geyBhY3Rpb25zOiBhY3Rpb25IaXN0b3J5LCBjdXJyZW50SW5kZXg6IGhpc3RvcnlJbmRleCB9O1xyXG5cclxuICB1c2VFZmZlY3QoKCkgPT4ge1xyXG4gICAgaWYgKHNjcm9sbFJlZi5jdXJyZW50KSB7XHJcbiAgICAgIHNjcm9sbFJlZi5jdXJyZW50LnNjcm9sbFRvcCA9IHNjcm9sbFJlZi5jdXJyZW50LnNjcm9sbEhlaWdodDtcclxuICAgIH1cclxuICB9LCBbYWN0aW9uSGlzdG9yeS5sZW5ndGgsIGhpc3RvcnlJbmRleF0pO1xyXG5cclxuICBpZiAobW9kZSA9PT0gJ2VkaXQnKSB7XHJcbiAgICByZXR1cm4gbnVsbDtcclxuICB9XHJcblxyXG4gIHJldHVybiAoXHJcbiAgICA8ZGl2IGNsYXNzTmFtZT1cImJnLWdyYXktOTAwLzgwIGJhY2tkcm9wLWJsdXItc20gcm91bmRlZC14bCBib3JkZXIgYm9yZGVyLWdyYXktNzAwIHAtNCBzaGFkb3cteGwgZmxleCBmbGV4LWNvbCBoLWZ1bGxcIj5cclxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJmbGV4IGp1c3RpZnktYmV0d2VlbiBpdGVtcy1jZW50ZXIgbWItM1wiPlxyXG4gICAgICAgIDxoMyBjbGFzc05hbWU9XCJ0ZXh0LWxnIGZvbnQtYm9sZCB0ZXh0LWN5YW4tNDAwXCI+8J+TnCDooYzliqjljoblj7I8L2gzPlxyXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBnYXAtMVwiPlxyXG4gICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICBjbGFzc05hbWU9e2BweC0zIHB5LTEuNSByb3VuZGVkLWxnIHRleHQtc20gdHJhbnNpdGlvbi1hbGwgJHtcclxuICAgICAgICAgICAgICAhaXNQbGF5YmFja0FjdGl2ZSAmJiBjYW5VbmRvKGN1cnJlbnRIaXN0b3J5KVxyXG4gICAgICAgICAgICAgICAgPyAnYmctZ3JheS04MDAgaG92ZXI6YmctZ3JheS03MDAgYWN0aXZlOnNjYWxlLTk1J1xyXG4gICAgICAgICAgICAgICAgOiAnYmctZ3JheS04MDAvNTAgdGV4dC1ncmF5LTUwMCBjdXJzb3Itbm90LWFsbG93ZWQnXHJcbiAgICAgICAgICAgIH1gfVxyXG4gICAgICAgICAgICBvbkNsaWNrPXt1bmRvfVxyXG4gICAgICAgICAgICBkaXNhYmxlZD17aXNQbGF5YmFja0FjdGl2ZSB8fCAhY2FuVW5kbyhjdXJyZW50SGlzdG9yeSl9XHJcbiAgICAgICAgICAgIHRpdGxlPXtpc1BsYXliYWNrQWN0aXZlID8gJ+WbnuaUvui/m+ihjOS4rScgOiAn5pKk6ZSAIChDdHJsK1opJ31cclxuICAgICAgICAgID5cclxuICAgICAgICAgICAg4oap77iPIOaSpOmUgFxyXG4gICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICAgIGNsYXNzTmFtZT17YHB4LTMgcHktMS41IHJvdW5kZWQtbGcgdGV4dC1zbSB0cmFuc2l0aW9uLWFsbCAke1xyXG4gICAgICAgICAgICAgICFpc1BsYXliYWNrQWN0aXZlICYmIGNhblJlZG8oY3VycmVudEhpc3RvcnkpXHJcbiAgICAgICAgICAgICAgICA/ICdiZy1ncmF5LTgwMCBob3ZlcjpiZy1ncmF5LTcwMCBhY3RpdmU6c2NhbGUtOTUnXHJcbiAgICAgICAgICAgICAgICA6ICdiZy1ncmF5LTgwMC81MCB0ZXh0LWdyYXktNTAwIGN1cnNvci1ub3QtYWxsb3dlZCdcclxuICAgICAgICAgICAgfWB9XHJcbiAgICAgICAgICAgIG9uQ2xpY2s9e3JlZG99XHJcbiAgICAgICAgICAgIGRpc2FibGVkPXtpc1BsYXliYWNrQWN0aXZlIHx8ICFjYW5SZWRvKGN1cnJlbnRIaXN0b3J5KX1cclxuICAgICAgICAgICAgdGl0bGU9e2lzUGxheWJhY2tBY3RpdmUgPyAn5Zue5pS+6L+b6KGM5LitJyA6ICfph43lgZogKEN0cmwrWSknfVxyXG4gICAgICAgICAgPlxyXG4gICAgICAgICAgICDihqrvuI8g6YeN5YGaXHJcbiAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICA8L2Rpdj5cclxuICAgICAgPC9kaXY+XHJcblxyXG4gICAgICA8ZGl2XHJcbiAgICAgICAgcmVmPXtzY3JvbGxSZWZ9XHJcbiAgICAgICAgY2xhc3NOYW1lPVwiZmxleC0xIG92ZXJmbG93LXktYXV0byBzcGFjZS15LTEgbWF4LWgtNjQgcHItMSBjdXN0b20tc2Nyb2xsYmFyXCJcclxuICAgICAgPlxyXG4gICAgICAgIHthY3Rpb25IaXN0b3J5Lmxlbmd0aCA9PT0gMCA/IChcclxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidGV4dC1jZW50ZXIgdGV4dC1ncmF5LTUwMCB0ZXh0LXNtIHB5LThcIj5cclxuICAgICAgICAgICAg5pqC5peg6KGM5Yqo6K6w5b2VXHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICApIDogKFxyXG4gICAgICAgICAgYWN0aW9uSGlzdG9yeS5tYXAoKGFjdGlvbiwgaW5kZXgpID0+IChcclxuICAgICAgICAgICAgPGRpdlxyXG4gICAgICAgICAgICAgIGtleT17YWN0aW9uLmlkfVxyXG4gICAgICAgICAgICAgIGNsYXNzTmFtZT17YHRleHQteHMgcHgtMiBweS0xLjUgcm91bmRlZC1sZyB0cmFuc2l0aW9uLWFsbCAke1xyXG4gICAgICAgICAgICAgICAgaW5kZXggPT09IGhpc3RvcnlJbmRleFxyXG4gICAgICAgICAgICAgICAgICA/ICdiZy1jeWFuLTkwMC81MCBib3JkZXIgYm9yZGVyLWN5YW4tNTAwLzUwIHRleHQtY3lhbi0zMDAnXHJcbiAgICAgICAgICAgICAgICAgIDogaW5kZXggPCBoaXN0b3J5SW5kZXhcclxuICAgICAgICAgICAgICAgICAgPyAnYmctZ3JheS04MDAvMzAgdGV4dC1ncmF5LTQwMCdcclxuICAgICAgICAgICAgICAgICAgOiAnYmctZ3JheS04MDAvMTAgdGV4dC1ncmF5LTYwMCdcclxuICAgICAgICAgICAgICB9YH1cclxuICAgICAgICAgICAgPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleCBqdXN0aWZ5LWJldHdlZW4gaXRlbXMtY2VudGVyXCI+XHJcbiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJmb250LW1vbm9cIj5cclxuICAgICAgICAgICAgICAgICAge1N0cmluZyhpbmRleCkucGFkU3RhcnQoMiwgJzAnKX1cclxuICAgICAgICAgICAgICAgIDwvc3Bhbj5cclxuICAgICAgICAgICAgICAgIDxzcGFuIGNsYXNzTmFtZT1cImZsZXgtMSBteC0yIHRydW5jYXRlXCI+XHJcbiAgICAgICAgICAgICAgICAgIHthY3Rpb24uZGVzY3JpcHRpb259XHJcbiAgICAgICAgICAgICAgICA8L3NwYW4+XHJcbiAgICAgICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ0ZXh0LWdyYXktNTAwIGZvbnQtbW9ubyB0ZXh0LVsxMHB4XVwiPlxyXG4gICAgICAgICAgICAgICAgICAoe2FjdGlvbi5wb3NpdGlvbi54fSx7YWN0aW9uLnBvc2l0aW9uLnl9KVxyXG4gICAgICAgICAgICAgICAgPC9zcGFuPlxyXG4gICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICkpXHJcbiAgICAgICAgKX1cclxuICAgICAgPC9kaXY+XHJcblxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cIm10LTMgcHQtMyBib3JkZXItdCBib3JkZXItZ3JheS03MDAgZmxleCBnYXAtMlwiPlxyXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiZmxleC0xIHRleHQteHMgdGV4dC1ncmF5LTQwMFwiPlxyXG4gICAgICAgICAg5b2T5YmNOiB7aGlzdG9yeUluZGV4ICsgMX0gLyB7YWN0aW9uSGlzdG9yeS5sZW5ndGh9XHJcbiAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgY2xhc3NOYW1lPXtgcHgtMyBweS0xIHJvdW5kZWQtbGcgdGV4dC14cyB0cmFuc2l0aW9uLWFsbCAke1xyXG4gICAgICAgICAgICBpc1BsYXliYWNrQWN0aXZlXHJcbiAgICAgICAgICAgICAgPyAnYmctZ3JheS03MDAvNTAgdGV4dC1ncmF5LTUwMCBib3JkZXIgYm9yZGVyLWdyYXktNjAwIGN1cnNvci1ub3QtYWxsb3dlZCdcclxuICAgICAgICAgICAgICA6ICdiZy1yZWQtOTAwLzUwIGhvdmVyOmJnLXJlZC04MDAvNTAgYm9yZGVyIGJvcmRlci1yZWQtNzAwJ1xyXG4gICAgICAgICAgfWB9XHJcbiAgICAgICAgICBvbkNsaWNrPXtyZXNldExldmVsfVxyXG4gICAgICAgICAgZGlzYWJsZWQ9e2lzUGxheWJhY2tBY3RpdmV9XHJcbiAgICAgICAgICB0aXRsZT17aXNQbGF5YmFja0FjdGl2ZSA/ICflm57mlL7ov5vooYzkuK0nIDogJ+mHjee9ruWFs+WNoSd9XHJcbiAgICAgICAgPlxyXG4gICAgICAgICAg8J+UhCDph43nva5cclxuICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgPC9kaXY+XHJcbiAgICA8L2Rpdj5cclxuICApO1xyXG59O1xyXG4iXSwiZmlsZSI6IkQ6L3dvcmtTcGFjZS9BSV9fU1BBQ0Uvenl4LTAwMTI1L3NyYy9jb21wb25lbnRzL0hpc3RvcnlQYW5lbC50c3gifQ==

@@ -4,6 +4,7 @@ import type {
   KeyStep,
   Level,
   LevelContentDigest,
+  Mode,
   ReplayCompatibility,
   ReplayCompatibilityInfo,
   ReplayRecord,
@@ -163,6 +164,7 @@ export function validateReplayRecord(data: unknown): {
   if (typeof r.levelName !== 'string') return { valid: false, reason: '缺少 levelName 字段' };
   if (typeof r.steps !== 'number') return { valid: false, reason: '缺少 steps 字段' };
   if (typeof r.isWin !== 'boolean') return { valid: false, reason: '缺少 isWin 字段' };
+  if (r.isWin !== true) return { valid: false, reason: '回放记录未通关，仅通关记录可导入' };
   if (typeof r.createdAt !== 'number') return { valid: false, reason: '缺少 createdAt 字段' };
   if (!r.levelDigest || typeof r.levelDigest !== 'object') {
     return { valid: false, reason: '缺少 levelDigest 字段' };
@@ -237,4 +239,30 @@ export function validateReplayPack(data: unknown): VerifiedReplayPack {
   }
 
   return result;
+}
+
+export interface CanSaveReplayResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+export function canSaveReplay(
+  gameState: GameState,
+  actionHistory: Action[],
+  mode: Mode,
+): CanSaveReplayResult {
+  if (mode !== 'play') {
+    return { allowed: false, reason: '编辑模式下不能保存回放' };
+  }
+  if (actionHistory.length < 2) {
+    return { allowed: false, reason: '行动步骤太少，无法保存回放' };
+  }
+  if (!gameState.isWin) {
+    return { allowed: false, reason: '通关后才能保存攻略记录' };
+  }
+  return { allowed: true };
+}
+
+export function sanitizeReplays(replays: ReplayRecord[]): ReplayRecord[] {
+  return replays.filter(r => r.isWin === true);
 }
