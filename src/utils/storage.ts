@@ -1,4 +1,7 @@
-import type { Level, SaveData, GameState, Action, DraftData, EditorState, EditorHistoryState, ImportRecord } from '../types/game';
+import type {
+  Level, SaveData, GameState, Action, DraftData, EditorState, EditorHistoryState,
+  ImportRecord, ReplayRecord, ReplayImportRecord
+} from '../types/game';
 
 const STORAGE_KEYS = {
   LEVELS: 'puzzle_levels',
@@ -9,6 +12,8 @@ const STORAGE_KEYS = {
   DRAFT_INDEX: 'puzzle_draft_index',
   LAST_EDITING_LEVEL: 'puzzle_last_editing_level',
   IMPORT_HISTORY: 'puzzle_import_history',
+  REPLAYS: 'puzzle_replays',
+  REPLAY_IMPORT_HISTORY: 'puzzle_replay_import_history',
 };
 
 export function saveToStorage<T>(key: string, data: T): void {
@@ -198,4 +203,20 @@ export function saveImportHistory(records: ImportRecord[]): void {
 
 export function loadImportHistory(): ImportRecord[] {
   return loadFromStorage<ImportRecord[]>(STORAGE_KEYS.IMPORT_HISTORY, []);
+}
+
+export function saveReplays(replays: ReplayRecord[]): void {
+  saveToStorage(STORAGE_KEYS.REPLAYS, replays);
+}
+
+export function loadReplays(): ReplayRecord[] {
+  return loadFromStorage<ReplayRecord[]>(STORAGE_KEYS.REPLAYS, []);
+}
+
+export function saveReplayImportHistory(records: ReplayImportRecord[]): void {
+  saveToStorage(STORAGE_KEYS.REPLAY_IMPORT_HISTORY, records);
+}
+
+export function loadReplayImportHistory(): ReplayImportRecord[] {
+  return loadFromStorage<ReplayImportRecord[]>(STORAGE_KEYS.REPLAY_IMPORT_HISTORY, []);
 }

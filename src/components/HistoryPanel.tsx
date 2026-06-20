@@ -10,7 +10,10 @@ export const HistoryPanel: React.FC = () => {
     undo,
     redo,
     resetLevel,
+    playbackState,
   } = useGameStore();
+
+  const isPlaybackActive = playbackState.status !== 'idle';
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const currentHistory = { actions: actionHistory, currentIndex: historyIndex };
@@ -32,25 +35,25 @@ export const HistoryPanel: React.FC = () => {
         <div className="flex gap-1">
           <button
             className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-              canUndo(currentHistory)
+              !isPlaybackActive && canUndo(currentHistory)
                 ? 'bg-gray-800 hover:bg-gray-700 active:scale-95'
                 : 'bg-gray-800/50 text-gray-500 cursor-not-allowed'
             }`}
             onClick={undo}
-            disabled={!canUndo(currentHistory)}
-            title="撤销 (Ctrl+Z)"
+            disabled={isPlaybackActive || !canUndo(currentHistory)}
+            title={isPlaybackActive ? '回放进行中' : '撤销 (Ctrl+Z)'}
           >
             ↩️ 撤销
           </button>
           <button
             className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
-              canRedo(currentHistory)
+              !isPlaybackActive && canRedo(currentHistory)
                 ? 'bg-gray-800 hover:bg-gray-700 active:scale-95'
                 : 'bg-gray-800/50 text-gray-500 cursor-not-allowed'
             }`}
             onClick={redo}
-            disabled={!canRedo(currentHistory)}
-            title="重做 (Ctrl+Y)"
+            disabled={isPlaybackActive || !canRedo(currentHistory)}
+            title={isPlaybackActive ? '回放进行中' : '重做 (Ctrl+Y)'}
           >
             ↪️ 重做
           </button>
@@ -98,8 +101,14 @@ export const HistoryPanel: React.FC = () => {
           当前: {historyIndex + 1} / {actionHistory.length}
         </div>
         <button
-          className="px-3 py-1 bg-red-900/50 hover:bg-red-800/50 border border-red-700 rounded-lg text-xs transition-all"
+          className={`px-3 py-1 rounded-lg text-xs transition-all ${
+            isPlaybackActive
+              ? 'bg-gray-700/50 text-gray-500 border border-gray-600 cursor-not-allowed'
+              : 'bg-red-900/50 hover:bg-red-800/50 border border-red-700'
+          }`}
           onClick={resetLevel}
+          disabled={isPlaybackActive}
+          title={isPlaybackActive ? '回放进行中' : '重置关卡'}
         >
           🔄 重置
         </button>

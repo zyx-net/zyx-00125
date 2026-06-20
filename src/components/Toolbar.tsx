@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useGameStore } from '../store/useGameStore';
 import { sampleLevels } from '../data/sampleLevels';
-import type { CellType, Color, ConflictResolution, ImportConflict, ImportLevelDetail } from '../types/game';
+import type { CellType, Color, ConflictResolution, ImportConflict, ImportLevelDetail, ReplayConflictResolution, ReplayImportConflict, ReplayImportDetail } from '../types/game';
 
 const colorOptions: { value: Color; label: string; color: string }[] = [
   { value: 'red', label: '红', color: 'bg-red-500' },
@@ -46,6 +46,32 @@ function usePreviewStats(
   }, [allLevels, conflicts, resolutions, failedCount]);
 }
 
+function useReplayPreviewStats(
+  allReplays: { id: string }[],
+  conflicts: ReplayImportConflict[],
+  resolutions: Map<string, ReplayConflictResolution>,
+  failedCount: number = 0,
+) {
+  return useMemo(() => {
+    const conflictIds = new Set(conflicts.map(c => c.incomingReplay.id));
+    let newCount = 0;
+    let overwriteCount = 0;
+    let duplicateCount = 0;
+    let skipCount = 0;
+    for (const rp of allReplays) {
+      if (!conflictIds.has(rp.id)) {
+        newCount++;
+      } else {
+        const res = resolutions.get(rp.id) || 'duplicate';
+        if (res === 'overwrite') overwriteCount++;
+        else if (res === 'duplicate') duplicateCount++;
+        else skipCount++;
+      }
+    }
+    return { newCount, overwriteCount, duplicateCount, skipCount, failedCount };
+  }, [allReplays, conflicts, resolutions, failedCount]);
+}
+
 export const Toolbar: React.FC = () => {
   const {
     mode,
@@ -85,6 +111,15 @@ export const Toolbar: React.FC = () => {
     importHistory,
     clearImportHistory,
     reExportImportResult,
+    pendingReplayConflicts,
+    pendingAllImportedReplays,
+    pendingReplayFailedItems,
+    pendingReplayImportFileName,
+    resolveReplayImportConflicts,
+    cancelPendingReplayConflicts,
+    replayImportHistory,
+    clearReplayImportHistory,
+    reExportReplayImportResult,
   } = useGameStore();
 
   const [showSaveDialog, setShowSaveDialog] = useState(false);
@@ -97,8 +132,12 @@ export const Toolbar: React.FC = () => {
   const [conflictResolutions, setConflictResolutions] = useState<Map<string, ConflictResolution>>(new Map());
   const [showImportHistory, setShowImportHistory] = useState(false);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [replayConflictResolutions, setReplayConflictResolutions] = useState<Map<string, ReplayConflictResolution>>(new Map());
+  const [showReplayImportHistory, setShowReplayImportHistory] = useState(false);
+  const [expandedReplayHistoryId, setExpandedReplayHistoryId] = useState<string | null>(null);
 
   const showImportPreview = pendingAllImportedLevels.length > 0;
+  const showReplayImportPreview = pendingAllImportedReplays.length > 0;
 
   useEffect(() => {
     if (showImportPreview) {
@@ -110,11 +149,28 @@ export const Toolbar: React.FC = () => {
     }
   }, [showImportPreview, pendingConflicts]);
 
+  useEffect(() => {
+    if (showReplayImportPreview) {
+      const initial = new Map<string, ReplayConflictResolution>();
+      for (const c of pendingReplayConflicts) {
+        initial.set(c.incomingReplay.id, 'duplicate');
+      }
+      setReplayConflictResolutions(initial);
+    }
+  }, [showReplayImportPreview, pendingReplayConflicts]);
+
   const previewStats = usePreviewStats(
     pendingAllImportedLevels,
     pendingConflicts,
     conflictResolutions,
     pendingFailedItems.length,
+  );
+
+  const replayPreviewStats = useReplayPreviewStats(
+    pendingAllImportedReplays,
+    pendingReplayConflicts,
+    replayConflictResolutions,
+    pendingReplayFailedItems.length,
   );
 
   const draftIdSet = useMemo(() => new Set(allDraftIds), [allDraftIds]);
@@ -177,6 +233,30 @@ export const Toolbar: React.FC = () => {
     setConflictResolutions(next);
   };
 
+  const handleConfirmReplayImport = () => {
+    const result = resolveReplayImportConflicts(replayConflictResolutions);
+    const parts: string[] = [];
+    const newResult = result.imported.length - result.overwritten.length - result.duplicated.length;
+    if (newResult > 0) parts.push(`新增 ${newResult} 条`);
+    if (result.overwritten.length) parts.push(`覆盖 ${result.overwritten.length} 条`);
+    if (result.duplicated.length) parts.push(`另存副本 ${result.duplicated.length} 条`);
+    if (result.skipped.length) parts.push(`跳过 ${result.skipped.length} 条`);
+    if (result.imported.length > 0) {
+      showMessage(`✅ 回放导入完成：${parts.join('，')}，共导入 ${result.imported.length} 条回放`, 'success');
+    } else {
+      showMessage(`ℹ️ 回放导入完成：${parts.join('，')}，未导入任何回放`, 'info');
+    }
+    setReplayConflictResolutions(new Map());
+  };
+
+  const handleSetAllReplayResolutions = (res: ReplayConflictResolution) => {
+    const next = new Map<string, ReplayConflictResolution>();
+    for (const c of pendingReplayConflicts) {
+      next.set(c.incomingReplay.id, res);
+    }
+    setReplayConflictResolutions(next);
+  };
+
   const formatTime = (t: number | null) => {
     if (!t) return '';
     const d = new Date(t);
@@ -194,6 +274,11 @@ export const Toolbar: React.FC = () => {
   const nonConflictLevels = useMemo(() => pendingAllImportedLevels.filter(l => !conflictIdSet.has(l.id)), [pendingAllImportedLevels, conflictIdSet]);
 
   const totalWillImport = previewStats.newCount + previewStats.overwriteCount + previewStats.duplicateCount;
+
+  const replayConflictIdSet = useMemo(() => new Set(pendingReplayConflicts.map(c => c.incomingReplay.id)), [pendingReplayConflicts]);
+  const nonConflictReplays = useMemo(() => pendingAllImportedReplays.filter(r => !replayConflictIdSet.has(r.id)), [pendingAllImportedReplays, replayConflictIdSet]);
+
+  const totalWillImportReplays = replayPreviewStats.newCount + replayPreviewStats.overwriteCount + replayPreviewStats.duplicateCount;
 
   return (
     <div className="bg-gray-900/90 backdrop-blur-sm border-b border-gray-700 px-4 py-3">
@@ -900,6 +985,357 @@ export const Toolbar: React.FC = () => {
                   disabled={totalWillImport === 0}
                 >
                   确认导入 ({totalWillImport})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {replayImportHistory.length > 0 && !showReplayImportPreview && (
+        <div className="mt-3 pt-3 border-t border-gray-700/50">
+          <button
+            className="text-xs text-gray-400 hover:text-gray-200 transition-all flex items-center gap-1"
+            onClick={() => setShowReplayImportHistory(!showReplayImportHistory)}
+          >
+            📋 回放导入记录 ({replayImportHistory.length})
+            <span className={`transition-transform ${showReplayImportHistory ? 'rotate-180' : ''}`}>▼</span>
+          </button>
+          {showReplayImportHistory && (
+            <div className="mt-2 space-y-1 max-h-64 overflow-y-auto custom-scrollbar">
+              {replayImportHistory.map((rec) => {
+                const isExpanded = expandedReplayHistoryId === rec.id;
+                const hasDetails = rec.replayDetails && rec.replayDetails.length > 0;
+                return (
+                  <div key={rec.id} className="bg-gray-800/40 rounded overflow-hidden">
+                    <div
+                      className={`flex items-center gap-3 text-xs px-3 py-2 transition-all ${
+                        hasDetails ? 'cursor-pointer hover:bg-gray-800/60' : 'cursor-default'
+                      }`}
+                      onClick={(e) => {
+                        if (hasDetails && !(e.target as HTMLElement).closest('.no-expand')) {
+                          setExpandedReplayHistoryId(isExpanded ? null : rec.id);
+                        }
+                      }}
+                    >
+                      {hasDetails && (
+                        <span className={`text-gray-500 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                          ▶
+                        </span>
+                      )}
+                      <span className="text-gray-300 font-mono truncate max-w-[160px] flex-shrink-0" title={rec.fileName}>
+                        {rec.fileName}
+                      </span>
+                      <span className="text-gray-500 flex-shrink-0">
+                        {new Date(rec.timestamp).toLocaleString()}
+                      </span>
+                      <span className="flex items-center gap-2 flex-shrink-0">
+                        {rec.failedCount > 0 ? (
+                          <span className="text-red-400">失败 {rec.failedCount}</span>
+                        ) : (
+                          <>
+                            {rec.newCount > 0 && <span className="text-green-400">+{rec.newCount}</span>}
+                            {rec.overwrittenCount > 0 && <span className="text-orange-400">↑{rec.overwrittenCount}</span>}
+                            {rec.duplicatedCount > 0 && <span className="text-blue-400">⊂{rec.duplicatedCount}</span>}
+                            {rec.skippedCount > 0 && <span className="text-gray-500">⊘{rec.skippedCount}</span>}
+                          </>
+                        )}
+                      </span>
+                      {rec.failureReasons.length > 0 && (
+                        <span className="text-red-300/70 truncate max-w-[200px]" title={rec.failureReasons.join('; ')}>
+                          {rec.failureReasons[0]}
+                        </span>
+                      )}
+                      {rec.failedCount === 0 && (rec.newCount > 0 || rec.overwrittenCount > 0 || rec.duplicatedCount > 0) && (
+                        <button
+                          className="no-expand ml-auto text-[10px] px-2 py-1 bg-purple-900/40 hover:bg-purple-800/50 text-purple-300 border border-purple-700/50 rounded transition-all flex-shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            reExportReplayImportResult(rec.id);
+                          }}
+                          title="导出这次导入的回放结果"
+                        >
+                          📤 导出结果
+                        </button>
+                      )}
+                    </div>
+                    {isExpanded && hasDetails && (
+                      <div className="border-t border-gray-700/50 bg-gray-900/40 px-3 py-2 space-y-1">
+                        {rec.replayDetails.map((d: ReplayImportDetail, idx: number) => {
+                          const outcomeMap: Record<string, { label: string; cls: string }> = {
+                            new: { label: '新增', cls: 'bg-green-900/40 text-green-300 border-green-700/50' },
+                            overwritten: { label: '覆盖', cls: 'bg-orange-900/40 text-orange-300 border-orange-700/50' },
+                            duplicated: { label: '另存副本', cls: 'bg-blue-900/40 text-blue-300 border-blue-700/50' },
+                            skipped: { label: '跳过', cls: 'bg-gray-700/40 text-gray-400 border-gray-600/50' },
+                            failed: { label: '失败', cls: 'bg-red-900/40 text-red-300 border-red-700/50' },
+                          };
+                          const o = outcomeMap[d.outcome];
+                          return (
+                            <div key={idx} className="flex items-start gap-2 text-[11px] py-1">
+                              <span className={`px-1.5 py-0.5 rounded border flex-shrink-0 ${o.cls}`}>
+                                {o.label}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-gray-300 truncate" title={d.replayName}>
+                                  {d.replayName}
+                                  <span className="text-gray-500 ml-1">({d.replayId === '__file__' ? '文件级错误' : d.replayId.slice(0, 12) + '…'})</span>
+                                </div>
+                                {d.outcome === 'overwritten' && d.existingReplayName && (
+                                  <div className="text-orange-400/70 text-[10px]">
+                                    → 覆盖已有：{d.existingReplayName}
+                                    {d.conflictType && <span className="text-gray-500 ml-1">（{d.conflictType === 'both' ? 'ID+名称' : d.conflictType}冲突）</span>}
+                                  </div>
+                                )}
+                                {d.outcome === 'duplicated' && d.newReplayName && (
+                                  <div className="text-blue-400/70 text-[10px]">
+                                    → 另存为：{d.newReplayName}
+                                  </div>
+                                )}
+                                {d.outcome === 'skipped' && d.conflictType && (
+                                  <div className="text-gray-500 text-[10px]">
+                                    冲突类型：{d.conflictType === 'both' ? 'ID+名称' : d.conflictType}
+                                  </div>
+                                )}
+                                {d.outcome === 'failed' && d.failureReason && (
+                                  <div className="text-red-400/80 text-[10px]">
+                                    原因：{d.failureReason}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <button
+                className="text-[10px] text-gray-600 hover:text-gray-400 transition-all mt-1"
+                onClick={() => {
+                  if (window.confirm('确定清空回放导入记录吗？')) {
+                    clearReplayImportHistory();
+                    setExpandedReplayHistoryId(null);
+                  }
+                }}
+              >
+                清空记录
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showReplayImportPreview && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-stretch sm:items-center justify-center z-[100] p-0 sm:p-4">
+          <div className="bg-gray-900 border sm:border border-gray-700 sm:rounded-xl w-full sm:w-full sm:max-w-2xl shadow-2xl flex flex-col min-h-0 sm:max-h-[92vh]">
+            <div className="sticky top-0 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 flex-shrink-0">
+              <h3 className="text-base sm:text-lg font-bold text-purple-400 flex-shrink-0">📥 回放导入预览</h3>
+              <span className="text-xs text-gray-500 font-mono truncate" title={pendingReplayImportFileName}>
+                {pendingReplayImportFileName}
+              </span>
+            </div>
+
+            <div className="sticky top-[52px] sm:top-[57px] z-[5] bg-gray-900/95 backdrop-blur-sm border-b border-gray-700/50 px-4 sm:px-6 py-3 flex-shrink-0">
+              <div className="flex flex-wrap gap-2 sm:gap-3 p-2 sm:p-3 bg-gray-800/60 rounded-lg border border-gray-700">
+                {replayPreviewStats.newCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-green-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-green-300 font-medium">将新增 {replayPreviewStats.newCount}</span>
+                  </div>
+                )}
+                {replayPreviewStats.overwriteCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-orange-300 font-medium">将覆盖 {replayPreviewStats.overwriteCount}</span>
+                  </div>
+                )}
+                {replayPreviewStats.duplicateCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-blue-300 font-medium">将另存副本 {replayPreviewStats.duplicateCount}</span>
+                  </div>
+                )}
+                {replayPreviewStats.skipCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-gray-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-gray-400 font-medium">将跳过 {replayPreviewStats.skipCount}</span>
+                  </div>
+                )}
+                {replayPreviewStats.failedCount > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-red-300 font-medium">验证失败 {replayPreviewStats.failedCount}</span>
+                  </div>
+                )}
+              </div>
+
+              {pendingReplayConflicts.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-3 pt-3 border-t border-gray-700/50 items-center">
+                  <span className="text-[11px] sm:text-xs text-gray-400 mr-1">批量:</span>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-orange-900/50 hover:bg-orange-800/60 active:bg-orange-700/60 text-orange-200 border border-orange-700/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllReplayResolutions('overwrite')}
+                  >
+                    全部覆盖
+                  </button>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-blue-900/50 hover:bg-blue-800/60 active:bg-blue-700/60 text-blue-200 border border-blue-700/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllReplayResolutions('duplicate')}
+                  >
+                    全部另存副本
+                  </button>
+                  <button
+                    className="px-2.5 sm:px-3 py-1.5 text-[11px] sm:text-xs bg-gray-700/50 hover:bg-gray-600/60 active:bg-gray-500/60 text-gray-300 border border-gray-600/60 rounded transition-all flex-shrink-0"
+                    onClick={() => handleSetAllReplayResolutions('skip')}
+                  >
+                    全部跳过
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 sm:px-6 py-3 sm:py-4 min-h-0 space-y-2">
+              {nonConflictReplays.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[11px] sm:text-xs text-gray-500 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">新增回放</div>
+                  {nonConflictReplays.map((rp) => (
+                    <div key={rp.id} className="p-2.5 sm:p-3 bg-green-900/20 border border-green-800/40 rounded-lg mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-green-400 text-sm">✅</span>
+                        <span className="font-medium text-green-200 text-sm">{rp.name || '未命名回放'}</span>
+                        <span className="text-[10px] text-green-500/70 bg-green-900/40 px-1.5 py-0.5 rounded flex-shrink-0">将新增</span>
+                      </div>
+                      <div className="text-[11px] text-gray-500 mt-1 ml-6">
+                        📂 {rp.levelName || '未知关卡'} · {rp.steps} 步 · {rp.isWin ? '✅ 通关' : '⏳ 未通关'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pendingReplayFailedItems.length > 0 && (
+                <div className="mb-3">
+                  <div className="text-[11px] sm:text-xs text-red-500/80 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">验证失败</div>
+                  {pendingReplayFailedItems.map((item) => (
+                    <div key={item.replayId} className="p-2.5 sm:p-3 bg-red-900/20 border border-red-800/40 rounded-lg mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-red-400 text-sm">❌</span>
+                        <span className="font-medium text-red-200 text-sm">{item.replayName || '未命名回放'}</span>
+                        <span className="text-[10px] text-red-500/70 bg-red-900/40 px-1.5 py-0.5 rounded flex-shrink-0">验证失败</span>
+                      </div>
+                      <div className="text-[11px] text-red-400/70 mt-1 ml-6">
+                        原因: {item.reason}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {pendingReplayConflicts.length > 0 && (
+                <div>
+                  <div className="text-[11px] sm:text-xs text-amber-500/80 mb-2 font-medium uppercase tracking-wider sticky top-0 bg-gray-900/90 py-1">冲突回放</div>
+                  {pendingReplayConflicts.map((c) => {
+                    const res = replayConflictResolutions.get(c.incomingReplay.id) || 'duplicate';
+                    const conflictLabel = c.conflictType === 'both' ? 'ID 和名称' : c.conflictType === 'id' ? 'ID' : '名称';
+                    return (
+                      <div key={c.incomingReplay.id} className="p-2.5 sm:p-3 bg-gray-800/60 border border-gray-700 rounded-lg mb-2">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-white flex items-center gap-2 text-sm flex-wrap">
+                              <span className="truncate">{c.incomingReplay.name || '未命名回放'}</span>
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-700/40 text-amber-200 rounded border border-amber-600/40 flex-shrink-0">
+                                {conflictLabel}冲突
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-400 mt-0.5">
+                              {c.incomingReplay.steps} 步 · {c.incomingReplay.isWin ? '✅ 通关' : '⏳ 未通关'}
+                              {c.existingReplay && (
+                                <span className="ml-2 block sm:inline">
+                                  → 现有: <span className="text-purple-300">{c.existingReplay.name}</span>
+                                  {' '}({c.existingReplay.steps} 步)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-1.5 sm:gap-2">
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
+                              res === 'overwrite'
+                                ? 'bg-orange-600 border-orange-500 text-white shadow-lg shadow-orange-500/30'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(replayConflictResolutions);
+                              next.set(c.incomingReplay.id, 'overwrite');
+                              setReplayConflictResolutions(next);
+                            }}
+                          >
+                            ⚠️ 覆盖
+                          </button>
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
+                              res === 'duplicate'
+                                ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(replayConflictResolutions);
+                              next.set(c.incomingReplay.id, 'duplicate');
+                              setReplayConflictResolutions(next);
+                            }}
+                          >
+                            📄 另存副本
+                          </button>
+                          <button
+                            className={`flex-1 px-2 py-1.5 rounded text-[11px] sm:text-xs transition-all border ${
+                              res === 'skip'
+                                ? 'bg-gray-600 border-gray-500 text-white'
+                                : 'bg-gray-700/40 border-gray-600/50 hover:bg-gray-700 active:bg-gray-600 text-gray-200'
+                            }`}
+                            onClick={() => {
+                              const next = new Map(replayConflictResolutions);
+                              next.set(c.incomingReplay.id, 'skip');
+                              setReplayConflictResolutions(next);
+                            }}
+                          >
+                            ❌ 跳过
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="sticky bottom-0 z-10 bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 px-4 sm:px-6 py-3 sm:py-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 flex-shrink-0 shadow-[0_-4px_16px_rgba(0,0,0,0.4)]">
+              <span className="text-xs sm:text-sm text-gray-400 text-center sm:text-left">
+                共 {pendingAllImportedReplays.length + pendingReplayFailedItems.length} 条回放
+                {pendingReplayFailedItems.length > 0 && `（失败 ${pendingReplayFailedItems.length}）`}
+                ，将导入 {totalWillImportReplays} 条
+              </span>
+              <div className="flex gap-2 w-full sm:w-auto">
+                <button
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 bg-gray-800 hover:bg-gray-700 active:bg-gray-600 rounded-lg transition-all text-sm"
+                  onClick={() => {
+                    cancelPendingReplayConflicts();
+                    setReplayConflictResolutions(new Map());
+                  }}
+                >
+                  取消导入
+                </button>
+                <button
+                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 rounded-lg transition-all font-semibold text-sm ${
+                    totalWillImportReplays > 0
+                      ? 'bg-purple-600 hover:bg-purple-500 active:bg-purple-400 text-white shadow-lg shadow-purple-500/20'
+                      : 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  }`}
+                  onClick={totalWillImportReplays > 0 ? handleConfirmReplayImport : undefined}
+                  disabled={totalWillImportReplays === 0}
+                >
+                  确认导入 ({totalWillImportReplays})
                 </button>
               </div>
             </div>

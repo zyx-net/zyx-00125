@@ -1,6 +1,10 @@
-import type { Level, SaveData, ImportLevelDetail } from '../types/game';
+import type {
+  Level, SaveData, ImportLevelDetail, ReplayRecord, ReplayImportDetail,
+  ReplayImportFailedItem, ReplayImportConflict,
+} from '../types/game';
 import { validateLevel } from '../game/rules';
 import { generateId } from '../game/grid';
+import { validateReplayPack } from '../game/replay';
 
 export interface ImportPackResult {
   validLevels: Level[];
@@ -226,4 +230,148 @@ export function exportImportRecordAsJson(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export function exportReplay(replay: ReplayRecord): void {
+  const pack = {
+    exportType: 'replay',
+    exportVersion: '1.0',
+    exportedAt: new Date().toISOString(),
+    replays: [replay],
+  };
+  const data = JSON.stringify(pack, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = (replay.name || 'replay').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+  a.download = `replay-${safeName}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function exportReplayPack(
+  replays: ReplayRecord[],
+  name: string = 'replay-pack'
+): void {
+  const pack = {
+    exportType: 'replay-pack',
+    exportVersion: '1.0',
+    exportedAt: new Date().toISOString(),
+    name,
+    replays,
+  };
+  const data = JSON.stringify(pack, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = name.replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+  a.download = `${safeName}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function exportReplayImportRecordAsJson(
+  record: {
+    fileName: string;
+    fileSize?: number;
+    fileHash?: string;
+    timestamp: number;
+    newCount: number;
+    overwrittenCount: number;
+    duplicatedCount: number;
+    skippedCount: number;
+    failedCount: number;
+    failureReasons: string[];
+    replayDetails: ReplayImportDetail[];
+  },
+  replays: ReplayRecord[],
+): void {
+  const exportData = {
+    exportType: 'replay-import-result',
+    exportVersion: '1.0',
+    exportedAt: new Date().toISOString(),
+    originalImport: {
+      fileName: record.fileName,
+      fileSize: record.fileSize,
+      fileHash: record.fileHash,
+      timestamp: record.timestamp,
+    },
+    summary: {
+      newCount: record.newCount,
+      overwrittenCount: record.overwrittenCount,
+      duplicatedCount: record.duplicatedCount,
+      skippedCount: record.skippedCount,
+      failedCount: record.failedCount,
+    },
+    failureReasons: record.failureReasons,
+    replayDetails: record.replayDetails,
+    replays,
+  };
+  const data = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const safeName = record.fileName.replace('.json', '').replace(/[^\w\u4e00-\u9fa5-]/g, '_');
+  a.download = `replay-import-result-${safeName}-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export interface ImportReplayPackResult {
+  validReplays: ReplayRecord[];
+  failedItems: ReplayImportFailedItem[];
+}
+
+export function importReplayPack(file: File): Promise<ImportReplayPackResult> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result as string;
+        const pack = JSON.parse(content);
+        const verified = validateReplayPack(pack);
+
+        if (verified.replays.length > 0 || verified.failedItems.length > 0) {
+          resolve({
+            validReplays: verified.replays,
+            failedItems: verified.failedItems as ReplayImportFailedItem[],
+          });
+        } else {
+          reject(new Error('回放包中没有有效的回放记录'));
+        }
+      } catch {
+        reject(new Error('文件格式错误或解析失败'));
+      }
+    };
+    reader.onerror = () => reject(new Error('文件读取失败'));
+    reader.readAsText(file);
+  });
+}
+
+export function detectReplayConflicts(
+  incoming: ReplayRecord[],
+  existing: ReplayRecord[]
+): ReplayImportConflict[] {
+  const conflicts: ReplayImportConflict[] = [];
+  for (const replay of incoming) {
+    const byId = existing.find(r => r.id === replay.id);
+    const byName = existing.find(r => r.name === replay.name);
+    if (byId && byName && byId.id === byName.id) {
+      conflicts.push({ incomingReplay: replay, existingReplay: byId, conflictType: 'both' });
+    } else if (byId) {
+      conflicts.push({ incomingReplay: replay, existingReplay: byId, conflictType: 'id' });
+    } else if (byName) {
+      conflicts.push({ incomingReplay: replay, existingReplay: byName, conflictType: 'name' });
+    }
+  }
+  return conflicts;
 }

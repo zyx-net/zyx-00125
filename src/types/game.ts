@@ -153,3 +153,114 @@ export interface ImportRecord {
   failureReasons: string[];
   levelDetails: ImportLevelDetail[];
 }
+
+export interface KeyStep {
+  actionIndex: number;
+  description: string;
+  type: Action['type'];
+}
+
+export interface LevelContentDigest {
+  width: number;
+  height: number;
+  startPos: Position;
+  endPos: Position;
+  gridHash: string;
+}
+
+export interface ReplayRecord {
+  id: string;
+  name: string;
+  levelId: string;
+  levelName: string;
+  steps: number;
+  isWin: boolean;
+  createdAt: number;
+  keySteps: KeyStep[];
+  levelDigest: LevelContentDigest;
+  actionHistory: Action[];
+  finalState?: GameState;
+  initialState: GameState;
+}
+
+export type ReplayCompatibility = 'compatible' | 'view-only' | 'incompatible';
+
+export interface ReplayCompatibilityInfo {
+  status: ReplayCompatibility;
+  reason?: string;
+  differences?: string[];
+}
+
+export type ReplayPlaybackStatus = 'idle' | 'playing' | 'paused' | 'finished' | 'cancelled';
+
+export interface ReplayPlaybackState {
+  replayId: string | null;
+  status: ReplayPlaybackStatus;
+  currentStep: number;
+  totalSteps: number;
+  speed: number;
+  prePlaybackSnapshot: {
+    gameState: GameState;
+    actionHistory: Action[];
+    historyIndex: number;
+    currentLevel: Level;
+  } | null;
+}
+
+export type ReplayConflictResolution = 'overwrite' | 'duplicate' | 'skip';
+
+export interface ReplayImportConflict {
+  incomingReplay: ReplayRecord;
+  existingReplay?: ReplayRecord;
+  conflictType: 'id' | 'name' | 'both';
+}
+
+export interface ReplayImportFailedItem {
+  replayData: unknown;
+  replayName: string;
+  replayId: string;
+  reason: string;
+}
+
+export interface ReplayImportPreviewData {
+  validReplays: ReplayRecord[];
+  failedItems: ReplayImportFailedItem[];
+  conflicts: ReplayImportConflict[];
+  fileName: string;
+}
+
+export interface ReplayImportResult {
+  imported: ReplayRecord[];
+  skipped: ReplayRecord[];
+  overwritten: ReplayRecord[];
+  duplicated: ReplayRecord[];
+}
+
+export type ReplayImportOutcome = 'new' | 'overwritten' | 'duplicated' | 'skipped' | 'failed';
+
+export interface ReplayImportDetail {
+  replayId: string;
+  replayName: string;
+  outcome: ReplayImportOutcome;
+  conflictType?: 'id' | 'name' | 'both';
+  existingReplayId?: string;
+  existingReplayName?: string;
+  newReplayId?: string;
+  newReplayName?: string;
+  failureReason?: string;
+}
+
+export interface ReplayImportRecord {
+  id: string;
+  fileName: string;
+  fileSize?: number;
+  fileHash?: string;
+  timestamp: number;
+  newCount: number;
+  overwrittenCount: number;
+  duplicatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  failureReasons: string[];
+  replayDetails: ReplayImportDetail[];
+}

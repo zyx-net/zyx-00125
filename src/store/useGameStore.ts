@@ -18,6 +18,16 @@ import type {
   ImportLevelDetail,
   LevelImportOutcome,
   ImportFailedItem,
+  ReplayRecord,
+  ReplayPlaybackState,
+  ReplayCompatibilityInfo,
+  ReplayImportConflict,
+  ReplayConflictResolution,
+  ReplayImportResult,
+  ReplayImportFailedItem,
+  ReplayImportRecord,
+  ReplayImportDetail,
+  ReplayImportOutcome,
 } from '../types/game';
 import {
   createInitialGameState,
@@ -65,6 +75,10 @@ import {
   isLevelDirty,
   saveImportHistory,
   loadImportHistory,
+  saveReplays,
+  loadReplays,
+  saveReplayImportHistory,
+  loadReplayImportHistory,
 } from '../utils/storage';
 import {
   exportLevel,
@@ -74,7 +88,19 @@ import {
   triggerFileInput,
   exportImportRecordAsJson,
   type ImportPackResult,
+  exportReplay,
+  exportReplayPack,
+  importReplayPack,
+  detectReplayConflicts,
+  exportReplayImportRecordAsJson,
+  type ImportReplayPackResult,
 } from '../utils/export';
+import {
+  buildReplayRecord,
+  checkReplayCompatibility,
+  getReplayStateAtStep,
+  cloneGameState as replayCloneGameState,
+} from '../game/replay';
 
 interface GameStore {
   mode: Mode;
@@ -99,6 +125,17 @@ interface GameStore {
   allDraftIds: string[];
   importHistory: ImportRecord[];
   lastImportResult: ImportRecord | null;
+
+  replays: ReplayRecord[];
+  playbackState: ReplayPlaybackState;
+  currentReplayCompatibility: ReplayCompatibilityInfo | null;
+  pendingReplayConflicts: ReplayImportConflict[];
+  pendingAllImportedReplays: ReplayRecord[];
+  pendingReplayFailedItems: ReplayImportFailedItem[];
+  pendingReplayImportFileName: string;
+  replayImportHistory: ReplayImportRecord[];
+  lastReplayImportResult: ReplayImportRecord | null;
+  replayFilter: string | null;
 
   setMode: (mode: Mode) => void;
   setEditorTool: (tool: CellType | 'eraser') => void;
@@ -133,6 +170,30 @@ interface GameStore {
   discardCurrentDraft: () => void;
   restoreCurrentDraft: () => boolean;
   refreshDraftStatus: () => void;
+
+  saveReplay: (name: string) => { success: boolean; message: string; replay?: ReplayRecord };
+  deleteReplay: (id: string) => void;
+  checkReplayCompatibility: (replayId: string) => ReplayCompatibilityInfo;
+  startReplayPlayback: (replayId: string) => { success: boolean; message: string };
+  stepReplayForward: () => void;
+  stepReplayBackward: () => void;
+  pauseReplay: () => void;
+  resumeReplay: () => void;
+  setReplaySpeed: (speed: number) => void;
+  jumpToReplayStep: (step: number) => void;
+  cancelReplayPlayback: () => void;
+  finishReplayPlayback: () => void;
+  applyReplayToLevel: (replayId: string) => { success: boolean; message: string };
+  exportReplay: (replayId: string) => void;
+  exportAllReplays: () => void;
+  setReplayFilter: (levelId: string | null) => void;
+  importReplays: () => Promise<{ success: boolean; message: string; conflicts?: ReplayImportConflict[]; failedCount?: number }>;
+  resolveReplayImportConflicts: (
+    resolutions: Map<string, ReplayConflictResolution>
+  ) => ReplayImportResult;
+  cancelPendingReplayConflicts: () => void;
+  clearReplayImportHistory: () => void;
+  reExportReplayImportResult: (recordId: string) => boolean;
 }
 
 let autoSaveDraftTimer: ReturnType<typeof setTimeout> | null = null;
@@ -210,6 +271,24 @@ export const useGameStore = create<GameStore>((set, get) => {
     allDraftIds: [],
     importHistory: loadImportHistory(),
     lastImportResult: null,
+
+    replays: loadReplays(),
+    playbackState: {
+      replayId: null,
+      status: 'idle',
+      currentStep: 0,
+      totalSteps: 0,
+      speed: 1,
+      prePlaybackSnapshot: null,
+    },
+    currentReplayCompatibility: null,
+    pendingReplayConflicts: [],
+    pendingAllImportedReplays: [],
+    pendingReplayFailedItems: [],
+    pendingReplayImportFileName: '',
+    replayImportHistory: loadReplayImportHistory(),
+    lastReplayImportResult: null,
+    replayFilter: null,
 
     setMode: (mode: Mode) => {
       const prev = get().mode;
@@ -493,7 +572,11 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     move: (direction: Direction) => {
-      const { gameState, actionHistory, historyIndex } = get();
+      const { gameState, actionHistory, historyIndex, playbackState } = get();
+      if (playbackState.status !== 'idle') {
+        get().showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+        return;
+      }
       const result = movePlayer(gameState, direction);
 
       if (!result.valid || !result.newState) {
@@ -527,7 +610,11 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     undo: () => {
-      const { mode, editorHistory, actionHistory, historyIndex } = get();
+      const { mode, editorHistory, actionHistory, historyIndex, playbackState } = get();
+      if (playbackState.status !== 'idle') {
+        get().showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+        return;
+      }
 
       if (mode === 'edit') {
         if (!canEditorUndo(editorHistory)) {
@@ -573,7 +660,11 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     redo: () => {
-      const { mode, editorHistory, actionHistory, historyIndex } = get();
+      const { mode, editorHistory, actionHistory, historyIndex, playbackState } = get();
+      if (playbackState.status !== 'idle') {
+        get().showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+        return;
+      }
 
       if (mode === 'edit') {
         if (!canEditorRedo(editorHistory)) {
@@ -619,7 +710,11 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     resetLevel: () => {
-      const { currentLevel } = get();
+      const { currentLevel, playbackState } = get();
+      if (playbackState.status !== 'idle') {
+        get().showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+        return;
+      }
       const initialState = resetGame(currentLevel);
       const history = resetHistory(createHistory(), initialState);
       saveCurrentState(initialState, history.actions, history.currentIndex);
@@ -684,7 +779,11 @@ export const useGameStore = create<GameStore>((set, get) => {
     },
 
     saveGame: (name: string) => {
-      const { gameState, actionHistory, historyIndex, savedGames } = get();
+      const { gameState, actionHistory, historyIndex, savedGames, playbackState } = get();
+      if (playbackState.status !== 'idle') {
+        get().showMessage('⚠️ 回放进行中，请先取消回放再保存', 'error');
+        return;
+      }
       const saveData: SaveData = {
         id: generateId(),
         name,
@@ -1247,6 +1346,635 @@ export const useGameStore = create<GameStore>((set, get) => {
         draftUpdatedAt: getDraftUpdatedAt(id),
         allDraftIds: loadAllDrafts().map(d => d.levelId),
       });
+    },
+
+    saveReplay: (name: string) => {
+      const { gameState, actionHistory, historyIndex, currentLevel, replays, mode } = get();
+      if (mode !== 'play') {
+        return { success: false, message: '❌ 编辑模式下不能保存回放' };
+      }
+      if (actionHistory.length < 2) {
+        return { success: false, message: '❌ 行动步骤太少，无法保存回放' };
+      }
+      if (!name.trim()) {
+        return { success: false, message: '❌ 请输入回放名称' };
+      }
+      const history = { actions: actionHistory, currentIndex: historyIndex };
+      const initialState = getReplayStateAtStep(
+        { actionHistory } as unknown as ReplayRecord,
+        0
+      ) || gameState;
+      const finalState = actionHistory[historyIndex]?.stateSnapshot || gameState;
+      const newReplay = buildReplayRecord(
+        name.trim(),
+        currentLevel,
+        initialState,
+        actionHistory,
+        finalState
+      );
+      const newReplays = [...replays, newReplay];
+      saveReplays(newReplays);
+      set({ replays: newReplays });
+      return {
+        success: true,
+        message: `✅ 回放 "${name}" 保存成功（${newReplay.steps} 步）`,
+        replay: newReplay,
+      };
+    },
+
+    deleteReplay: (id: string) => {
+      const { replays, playbackState } = get();
+      if (playbackState.replayId === id && playbackState.status !== 'idle') {
+        get().cancelReplayPlayback();
+      }
+      const newReplays = replays.filter(r => r.id !== id);
+      saveReplays(newReplays);
+      set({ replays: newReplays });
+      get().showMessage('✅ 回放已删除', 'success');
+    },
+
+    checkReplayCompatibility: (replayId: string) => {
+      const { replays, currentLevel } = get();
+      const replay = replays.find(r => r.id === replayId);
+      if (!replay) {
+        return { status: 'incompatible' as const, reason: '回放记录不存在' };
+      }
+      const compat = checkReplayCompatibility(replay, currentLevel);
+      set({ currentReplayCompatibility: compat });
+      return compat;
+    },
+
+    startReplayPlayback: (replayId: string) => {
+      const { replays, currentLevel, gameState, actionHistory, historyIndex } = get();
+      const replay = replays.find(r => r.id === replayId);
+      if (!replay) {
+        return { success: false, message: '❌ 回放记录不存在' };
+      }
+      const compat = checkReplayCompatibility(replay, currentLevel);
+      if (compat.status === 'incompatible') {
+        return {
+          success: false,
+          message: `❌ 回放与当前关卡不兼容：${compat.reason}`,
+        };
+      }
+      const snapshot = {
+        gameState: replayCloneGameState(gameState),
+        actionHistory: actionHistory.map(a => ({
+          ...a,
+          stateSnapshot: replayCloneGameState(a.stateSnapshot),
+        })),
+        historyIndex,
+        currentLevel: {
+          ...currentLevel,
+          grid: cloneGrid(currentLevel.grid),
+          startPos: { ...currentLevel.startPos },
+          endPos: { ...currentLevel.endPos },
+        },
+      };
+      const firstState = getReplayStateAtStep(replay, 0);
+      if (!firstState) {
+        return { success: false, message: '❌ 回放数据损坏' };
+      }
+      set({
+        playbackState: {
+          replayId,
+          status: 'paused',
+          currentStep: 0,
+          totalSteps: replay.actionHistory.length - 1,
+          speed: 1,
+          prePlaybackSnapshot: snapshot,
+        },
+        currentReplayCompatibility: compat,
+        gameState: firstState,
+        actionHistory: replay.actionHistory.slice(0, 1),
+        historyIndex: 0,
+        currentLevel: firstState.level,
+      });
+      return {
+        success: true,
+        message: compat.status === 'view-only'
+          ? `⚠️ 关卡已被编辑，此回放仅可查看步骤（${compat.reason}）`
+          : `▶️ 回放已就绪：${replay.name}（${replay.steps} 步）`,
+      };
+    },
+
+    stepReplayForward: () => {
+      const { playbackState, replays } = get();
+      if (!playbackState.replayId || playbackState.status === 'idle') return;
+      const replay = replays.find(r => r.id === playbackState.replayId);
+      if (!replay) return;
+      const nextStep = playbackState.currentStep + 1;
+      if (nextStep >= replay.actionHistory.length) {
+        get().finishReplayPlayback();
+        return;
+      }
+      const nextState = getReplayStateAtStep(replay, nextStep);
+      if (!nextState) return;
+      const newStatus = nextStep >= replay.actionHistory.length - 1 ? 'finished' : playbackState.status;
+      set({
+        playbackState: { ...playbackState, currentStep: nextStep, status: newStatus },
+        gameState: nextState,
+        actionHistory: replay.actionHistory.slice(0, nextStep + 1),
+        historyIndex: nextStep,
+        currentLevel: nextState.level,
+      });
+    },
+
+    stepReplayBackward: () => {
+      const { playbackState, replays } = get();
+      if (!playbackState.replayId || playbackState.status === 'idle') return;
+      const replay = replays.find(r => r.id === playbackState.replayId);
+      if (!replay) return;
+      const prevStep = Math.max(0, playbackState.currentStep - 1);
+      const prevState = getReplayStateAtStep(replay, prevStep);
+      if (!prevState) return;
+      set({
+        playbackState: { ...playbackState, currentStep: prevStep, status: 'paused' },
+        gameState: prevState,
+        actionHistory: replay.actionHistory.slice(0, prevStep + 1),
+        historyIndex: prevStep,
+        currentLevel: prevState.level,
+      });
+    },
+
+    pauseReplay: () => {
+      const { playbackState } = get();
+      if (playbackState.status === 'playing') {
+        set({ playbackState: { ...playbackState, status: 'paused' } });
+      }
+    },
+
+    resumeReplay: () => {
+      const { playbackState, replays } = get();
+      if (!playbackState.replayId) return;
+      const replay = replays.find(r => r.id === playbackState.replayId);
+      if (!replay) return;
+      if (playbackState.currentStep >= replay.actionHistory.length - 1) return;
+      set({ playbackState: { ...playbackState, status: 'playing' } });
+    },
+
+    setReplaySpeed: (speed: number) => {
+      const { playbackState } = get();
+      set({ playbackState: { ...playbackState, speed: Math.max(0.25, Math.min(4, speed)) } });
+    },
+
+    jumpToReplayStep: (step: number) => {
+      const { playbackState, replays } = get();
+      if (!playbackState.replayId || playbackState.status === 'idle') return;
+      const replay = replays.find(r => r.id === playbackState.replayId);
+      if (!replay) return;
+      const clampedStep = Math.max(0, Math.min(replay.actionHistory.length - 1, step));
+      const targetState = getReplayStateAtStep(replay, clampedStep);
+      if (!targetState) return;
+      const finished = clampedStep >= replay.actionHistory.length - 1;
+      set({
+        playbackState: {
+          ...playbackState,
+          currentStep: clampedStep,
+          status: finished ? 'finished' : playbackState.status,
+        },
+        gameState: targetState,
+        actionHistory: replay.actionHistory.slice(0, clampedStep + 1),
+        historyIndex: clampedStep,
+        currentLevel: targetState.level,
+      });
+    },
+
+    cancelReplayPlayback: () => {
+      const { playbackState } = get();
+      if (!playbackState.prePlaybackSnapshot) {
+        set({
+          playbackState: {
+            replayId: null,
+            status: 'idle',
+            currentStep: 0,
+            totalSteps: 0,
+            speed: 1,
+            prePlaybackSnapshot: null,
+          },
+          currentReplayCompatibility: null,
+        });
+        return;
+      }
+      const snap = playbackState.prePlaybackSnapshot;
+      set({
+        gameState: snap.gameState,
+        actionHistory: snap.actionHistory,
+        historyIndex: snap.historyIndex,
+        currentLevel: snap.currentLevel,
+        playbackState: {
+          replayId: null,
+          status: 'idle',
+          currentStep: 0,
+          totalSteps: 0,
+          speed: 1,
+          prePlaybackSnapshot: null,
+        },
+        currentReplayCompatibility: null,
+      });
+      saveCurrentState(snap.gameState, snap.actionHistory, snap.historyIndex);
+      get().showMessage('↩️ 回放已取消，状态已回滚', 'info');
+    },
+
+    finishReplayPlayback: () => {
+      const { playbackState } = get();
+      set({ playbackState: { ...playbackState, status: 'finished' } });
+      get().showMessage('🎉 回放播放完成', 'success');
+    },
+
+    applyReplayToLevel: (replayId: string) => {
+      const { replays, currentLevel } = get();
+      const replay = replays.find(r => r.id === replayId);
+      if (!replay) {
+        return { success: false, message: '❌ 回放记录不存在' };
+      }
+      const compat = checkReplayCompatibility(replay, currentLevel);
+      if (compat.status !== 'compatible') {
+        return {
+          success: false,
+          message: compat.status === 'view-only'
+            ? `⚠️ 关卡已被编辑，无法安全套用（${compat.reason}）。可使用"播放查看"`
+            : `❌ 回放与当前关卡不兼容：${compat.reason}`,
+        };
+      }
+      const finalIdx = replay.actionHistory.length - 1;
+      const finalState = getReplayStateAtStep(replay, finalIdx);
+      if (!finalState) {
+        return { success: false, message: '❌ 回放数据损坏' };
+      }
+      set({
+        gameState: finalState,
+        actionHistory: replay.actionHistory.map(a => ({
+          ...a,
+          stateSnapshot: replayCloneGameState(a.stateSnapshot),
+        })),
+        historyIndex: finalIdx,
+        currentLevel: finalState.level,
+      });
+      saveCurrentState(finalState, replay.actionHistory, finalIdx);
+      const winMsg = finalState.isWin ? '，关卡已通关！' : '';
+      return {
+        success: true,
+        message: `✅ 已套用回放：${replay.name}（${replay.steps} 步${winMsg}）`,
+      };
+    },
+
+    exportReplay: (replayId: string) => {
+      const replay = get().replays.find(r => r.id === replayId);
+      if (!replay) {
+        get().showMessage('❌ 回放记录不存在', 'error');
+        return;
+      }
+      exportReplay(replay);
+      get().showMessage(`✅ 回放 "${replay.name}" 已导出`, 'success');
+    },
+
+    exportAllReplays: () => {
+      const { replays } = get();
+      if (replays.length === 0) {
+        get().showMessage('⚠️ 没有可导出的回放记录', 'error');
+        return;
+      }
+      exportReplayPack(replays, `replay-pack-${Date.now()}`);
+      get().showMessage(`✅ 已导出 ${replays.length} 条回放记录`, 'success');
+    },
+
+    setReplayFilter: (levelId: string | null) => {
+      set({ replayFilter: levelId });
+    },
+
+    importReplays: async () => {
+      return new Promise((resolve) => {
+        triggerFileInput('.json', async (file) => {
+          try {
+            let fileHash = '';
+            try {
+              const buf = await file.arrayBuffer();
+              const hashBuf = await crypto.subtle.digest('SHA-256', buf);
+              fileHash = Array.from(new Uint8Array(hashBuf))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+            } catch {
+              fileHash = `${file.name}-${file.size}-${file.lastModified}`;
+            }
+
+            const recentDuplicate = get().replayImportHistory.find(
+              r => r.fileHash && r.fileHash === fileHash && (Date.now() - r.timestamp) < 24 * 60 * 60 * 1000
+            );
+            if (recentDuplicate) {
+              const goAhead = window.confirm(
+                `⚠️ 检测到 24 小时内已导入过同名同内容回放文件：\n` +
+                `"${file.name}" (${new Date(recentDuplicate.timestamp).toLocaleString()})\n\n` +
+                `上次结果：新增 ${recentDuplicate.newCount} / 覆盖 ${recentDuplicate.overwrittenCount} / ` +
+                `副本 ${recentDuplicate.duplicatedCount} / 跳过 ${recentDuplicate.skippedCount}` +
+                (recentDuplicate.failedCount > 0 ? ` / 失败 ${recentDuplicate.failedCount}` : '') +
+                `\n\n是否仍然继续导入？`
+              );
+              if (!goAhead) {
+                resolve({ success: false, message: '已取消重复导入' });
+                return;
+              }
+            }
+
+            const packResult: ImportReplayPackResult = await importReplayPack(file);
+            const { validReplays, failedItems } = packResult;
+            const { replays: existingReplays } = get();
+
+            if (validReplays.length === 0 && failedItems.length === 0) {
+              throw new Error('回放包中没有有效的回放记录');
+            }
+
+            const conflicts = detectReplayConflicts(validReplays, existingReplays);
+            const failedDetails: ReplayImportDetail[] = failedItems.map(item => ({
+              replayId: item.replayId,
+              replayName: item.replayName,
+              outcome: 'failed' as ReplayImportOutcome,
+              failureReason: item.reason,
+            }));
+
+            if (validReplays.length === 0 && failedItems.length > 0) {
+              const record: ReplayImportRecord = {
+                id: generateId(),
+                fileName: file.name,
+                fileSize: file.size,
+                fileHash,
+                timestamp: Date.now(),
+                newCount: 0,
+                overwrittenCount: 0,
+                duplicatedCount: 0,
+                skippedCount: 0,
+                failedCount: failedItems.length,
+                failureReasons: failedItems.map(f => f.reason),
+                replayDetails: failedDetails,
+              };
+              const history = [record, ...get().replayImportHistory].slice(0, 50);
+              saveReplayImportHistory(history);
+              set({ replayImportHistory: history, lastReplayImportResult: record });
+              resolve({
+                success: false,
+                message: `⚠️ 回放包中 ${failedItems.length} 条回放全部验证失败`,
+                failedCount: failedItems.length,
+              });
+              return;
+            }
+
+            set({
+              pendingReplayConflicts: conflicts,
+              pendingAllImportedReplays: validReplays,
+              pendingReplayFailedItems: failedItems,
+              pendingReplayImportFileName: file.name,
+            });
+
+            (get() as any)._pendingReplayFileMeta = {
+              fileSize: file.size,
+              fileHash,
+              failedDetails,
+            };
+
+            const total = validReplays.length + failedItems.length;
+            let message = `📋 即将导入 ${validReplays.length} 条回放`;
+            if (failedItems.length > 0) {
+              message += `，${failedItems.length} 条验证失败`;
+            }
+            if (conflicts.length > 0) {
+              message += `，检测到 ${conflicts.length} 个冲突`;
+            }
+            message += '，请确认';
+
+            resolve({
+              success: true,
+              message,
+              conflicts,
+              failedCount: failedItems.length,
+            });
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : '导入失败';
+            let fileHash = '';
+            try {
+              fileHash = `${file.name}-${file.size}-${file.lastModified}`;
+            } catch {
+              // ignore
+            }
+            const record: ReplayImportRecord = {
+              id: generateId(),
+              fileName: file.name,
+              fileSize: file.size,
+              fileHash,
+              timestamp: Date.now(),
+              newCount: 0,
+              overwrittenCount: 0,
+              duplicatedCount: 0,
+              skippedCount: 0,
+              failedCount: 1,
+              failureReasons: [message],
+              replayDetails: [
+                {
+                  replayId: '__file__',
+                  replayName: file.name,
+                  outcome: 'failed' as ReplayImportOutcome,
+                  failureReason: message,
+                },
+              ],
+            };
+            const history = [record, ...get().replayImportHistory].slice(0, 50);
+            saveReplayImportHistory(history);
+            set({ replayImportHistory: history, lastReplayImportResult: record });
+            resolve({ success: false, message });
+          }
+        });
+      });
+    },
+
+    resolveReplayImportConflicts: (resolutions: Map<string, ReplayConflictResolution>): ReplayImportResult => {
+      const {
+        pendingAllImportedReplays,
+        pendingReplayConflicts,
+        replays,
+        pendingReplayImportFileName,
+        pendingReplayFailedItems,
+      } = get();
+      const conflictMap = new Map(pendingReplayConflicts.map(c => [c.incomingReplay.id, c]));
+      let allReplays = [...replays];
+      const result: ReplayImportResult = {
+        imported: [],
+        skipped: [],
+        overwritten: [],
+        duplicated: [],
+      };
+      const replayDetails: ReplayImportDetail[] = [];
+
+      for (const incomingReplay of pendingAllImportedReplays) {
+        const conflict = conflictMap.get(incomingReplay.id);
+        if (!conflict) {
+          const newReplay = { ...incomingReplay, id: incomingReplay.id || generateId() };
+          allReplays.push(newReplay);
+          result.imported.push(newReplay);
+          replayDetails.push({
+            replayId: newReplay.id,
+            replayName: newReplay.name || '未命名回放',
+            outcome: 'new',
+            newReplayId: newReplay.id,
+            newReplayName: newReplay.name || '未命名回放',
+          });
+          continue;
+        }
+        const { existingReplay, conflictType } = conflict;
+        const resolution = resolutions.get(incomingReplay.id);
+        if (resolution === 'overwrite' && existingReplay) {
+          const idx = allReplays.findIndex(r => r.id === existingReplay.id);
+          if (idx >= 0) {
+            allReplays[idx] = { ...incomingReplay, id: existingReplay.id };
+            result.overwritten.push(allReplays[idx]);
+            result.imported.push(allReplays[idx]);
+            replayDetails.push({
+              replayId: incomingReplay.id,
+              replayName: incomingReplay.name || '未命名回放',
+              outcome: 'overwritten',
+              conflictType,
+              existingReplayId: existingReplay.id,
+              existingReplayName: existingReplay.name || '未命名回放',
+              newReplayId: existingReplay.id,
+              newReplayName: allReplays[idx].name || '未命名回放',
+            });
+          } else {
+            allReplays.push(incomingReplay);
+            result.imported.push(incomingReplay);
+            replayDetails.push({
+              replayId: incomingReplay.id,
+              replayName: incomingReplay.name || '未命名回放',
+              outcome: 'overwritten',
+              conflictType,
+              existingReplayId: existingReplay.id,
+              existingReplayName: existingReplay.name || '未命名回放',
+              newReplayId: incomingReplay.id,
+              newReplayName: incomingReplay.name || '未命名回放',
+            });
+          }
+        } else if (resolution === 'duplicate') {
+          const newId = generateId();
+          let baseName = incomingReplay.name || '未命名回放';
+          const existingNames = new Set(allReplays.map(r => r.name));
+          let candidate = `${baseName} (副本)`;
+          let counter = 2;
+          while (existingNames.has(candidate)) {
+            candidate = `${baseName} (副本${counter})`;
+            counter++;
+          }
+          const dup: ReplayRecord = { ...incomingReplay, id: newId, name: candidate };
+          allReplays.push(dup);
+          result.duplicated.push(dup);
+          result.imported.push(dup);
+          replayDetails.push({
+            replayId: incomingReplay.id,
+            replayName: incomingReplay.name || '未命名回放',
+            outcome: 'duplicated',
+            conflictType,
+            existingReplayId: existingReplay?.id,
+            existingReplayName: existingReplay?.name || '未命名回放',
+            newReplayId: newId,
+            newReplayName: candidate,
+          });
+        } else {
+          result.skipped.push(incomingReplay);
+          replayDetails.push({
+            replayId: incomingReplay.id,
+            replayName: incomingReplay.name || '未命名回放',
+            outcome: 'skipped',
+            conflictType,
+            existingReplayId: existingReplay?.id,
+            existingReplayName: existingReplay?.name || '未命名回放',
+          });
+        }
+      }
+
+      for (const failed of pendingReplayFailedItems) {
+        replayDetails.push({
+          replayId: failed.replayId,
+          replayName: failed.replayName,
+          outcome: 'failed',
+          failureReason: failed.reason,
+        });
+      }
+
+      saveReplays(allReplays);
+      const newCount = result.imported.length - result.overwritten.length - result.duplicated.length;
+      const pendingMeta = (get() as any)._pendingReplayFileMeta || {};
+      const failureReasons = pendingReplayFailedItems.map(f => f.reason);
+      const record: ReplayImportRecord = {
+        id: generateId(),
+        fileName: pendingReplayImportFileName,
+        fileSize: pendingMeta.fileSize,
+        fileHash: pendingMeta.fileHash,
+        timestamp: Date.now(),
+        newCount: Math.max(0, newCount),
+        overwrittenCount: result.overwritten.length,
+        duplicatedCount: result.duplicated.length,
+        skippedCount: result.skipped.length,
+        failedCount: pendingReplayFailedItems.length,
+        failureReasons,
+        replayDetails,
+      };
+      const history = [record, ...get().replayImportHistory].slice(0, 50);
+      saveReplayImportHistory(history);
+
+      (get() as any)._pendingReplayFileMeta = null;
+
+      set({
+        replays: allReplays,
+        pendingReplayConflicts: [],
+        pendingAllImportedReplays: [],
+        pendingReplayFailedItems: [],
+        pendingReplayImportFileName: '',
+        replayImportHistory: history,
+        lastReplayImportResult: record,
+      });
+      return result;
+    },
+
+    cancelPendingReplayConflicts: () => {
+      (get() as any)._pendingReplayFileMeta = null;
+      set({
+        pendingReplayConflicts: [],
+        pendingAllImportedReplays: [],
+        pendingReplayFailedItems: [],
+        pendingReplayImportFileName: '',
+      });
+    },
+
+    clearReplayImportHistory: () => {
+      saveReplayImportHistory([]);
+      set({ replayImportHistory: [], lastReplayImportResult: null });
+    },
+
+    reExportReplayImportResult: (recordId: string): boolean => {
+      const record = get().replayImportHistory.find(r => r.id === recordId);
+      if (!record) {
+        get().showMessage('❌ 未找到该回放导入记录', 'error');
+        return false;
+      }
+      const replayIds = new Set<string>();
+      for (const detail of record.replayDetails) {
+        if (detail.outcome === 'new' && detail.newReplayId) {
+          replayIds.add(detail.newReplayId);
+        } else if (detail.outcome === 'overwritten' && detail.newReplayId) {
+          replayIds.add(detail.newReplayId);
+        } else if (detail.outcome === 'duplicated' && detail.newReplayId) {
+          replayIds.add(detail.newReplayId);
+        }
+      }
+      const { replays } = get();
+      const replaysToExport: ReplayRecord[] = [];
+      for (const id of replayIds) {
+        const replay = replays.find(r => r.id === id);
+        if (replay) replaysToExport.push(replay);
+      }
+      if (replaysToExport.length === 0) {
+        get().showMessage('⚠️ 没有可导出的回放记录', 'error');
+        return false;
+      }
+      exportReplayImportRecordAsJson(record, replaysToExport);
+      get().showMessage(`✅ 已导出 ${replaysToExport.length} 条回放的导入结果`, 'success');
+      return true;
     },
   };
 });

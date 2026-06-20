@@ -3,6 +3,7 @@ import { Toolbar } from './components/Toolbar';
 import { Grid } from './components/Grid';
 import { StatusPanel } from './components/StatusPanel';
 import { HistoryPanel } from './components/HistoryPanel';
+import { ReplayPanel } from './components/ReplayPanel';
 import { Controls } from './components/Controls';
 import { useGameStore } from './store/useGameStore';
 import type { Direction } from './types/game';
@@ -21,11 +22,15 @@ const App: React.FC = () => {
     hasUnsavedDraft,
     isDraftRestored,
     draftUpdatedAt,
+    playbackState,
+    showMessage,
   } = useGameStore();
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.repeat) return;
+
+      const isPlaybackActive = playbackState.status !== 'idle';
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const ctrlKey = isMac ? e.metaKey : e.ctrlKey;
@@ -34,16 +39,25 @@ const App: React.FC = () => {
         switch (e.key.toLowerCase()) {
           case 'z':
             e.preventDefault();
-            undo();
+            if (isPlaybackActive) {
+              showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+            } else {
+              undo();
+            }
             return;
           case 'y':
             e.preventDefault();
-            redo();
+            if (isPlaybackActive) {
+              showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+            } else {
+              redo();
+            }
             return;
         }
       }
 
       if (mode === 'play') {
+        if (isPlaybackActive) return;
         let direction: Direction | null = null;
 
         switch (e.key.toLowerCase()) {
@@ -66,7 +80,11 @@ const App: React.FC = () => {
           case 'r':
             if (!ctrlKey) {
               e.preventDefault();
-              resetLevel();
+              if (isPlaybackActive) {
+                showMessage('⚠️ 回放进行中，请先取消回放再操作', 'error');
+              } else {
+                resetLevel();
+              }
               return;
             }
             break;
@@ -78,7 +96,7 @@ const App: React.FC = () => {
         }
       }
     },
-    [mode, move, undo, redo, resetLevel]
+    [mode, move, undo, redo, resetLevel, playbackState.status, showMessage]
   );
 
   useEffect(() => {
@@ -152,8 +170,9 @@ const App: React.FC = () => {
                 <Grid />
               </div>
 
-              <div className="w-full lg:w-72 order-3">
+              <div className="w-full lg:w-80 order-3 space-y-4">
                 <HistoryPanel />
+                <ReplayPanel />
               </div>
             </div>
           </div>
